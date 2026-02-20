@@ -1,0 +1,13 @@
+{
+    "mcpServers": {
+        "alai": {
+            "command": "npx",
+            "args": [
+                "mcp-remote@latest",
+                "https://slides-api.getalai.com/mcp/",
+                "--header",
+                "Authorization: Bearer sk_WEPJWK182N9q8nekPN8WpclFeqy7Ry6y3wWx4tBzOds"
+            ]
+        }
+    }
+}
