@@ -13,212 +13,130 @@ export default async function (req) {
     }
 
     try {
-        console.log("[Start] Medical Chatbot Function Invoked");
-
-        // 1. Parse Request Body
+        // 1. Parse body (use req.json() like analyze-report)
         let body;
-        let textBody = '';
         try {
-            textBody = await req.text();
-            console.log("[Body] Raw Text:", textBody ? textBody.slice(0, 500) : '<empty>');
+            body = await req.json();
+        } catch {
+            // Fallback to text parsing
+            const textBody = await req.text();
             if (!textBody) throw new Error("Empty body");
             body = JSON.parse(textBody);
-            console.log("[Body] Parsed successfully");
-        } catch (e) {
-            console.error("[Error] invalid JSON body", e, "Raw Text:", textBody);
-            throw new Error(`Invalid JSON body: ${e.message}`);
         }
-
         const { patient_wallet, message } = body;
 
         if (!patient_wallet || !message) {
-            console.error("[Error] Missing patient_wallet or message");
             return new Response(JSON.stringify({ error: 'patient_wallet and message required' }), {
                 status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
             });
         }
 
-        // 2. Client Initialization
+        // 2. Init clients
         const supabaseUrl = Deno.env.get('INSFORGE_BASE_URL');
         const supabaseKey = Deno.env.get('ANON_KEY');
         const googleKey = Deno.env.get('GOOGLE_API_KEY') || "AIzaSyAiboVwrC6N3gbdoBXLDf5nUd3QrppdFMM";
 
-        if (!supabaseUrl || !supabaseKey) {
-            console.error(`[Error] Missing Env Vars: URL=${!!supabaseUrl}, KEY=${!!supabaseKey}`);
-            throw new Error("Server Misconfiguration: Missing INSFORGE_BASE_URL or ANON_KEY");
-        }
-
-        if (!googleKey) {
-            console.error("[Error] Missing Google API Key");
-            throw new Error("Server Misconfiguration: Missing GOOGLE_API_KEY");
-        }
-
-        console.log(`[Config] URL=${supabaseUrl.slice(0, 10)}... Key=${supabaseKey.slice(0, 5)}... GoogleKey=${googleKey.slice(0, 5)}...`);
+        if (!supabaseUrl || !supabaseKey) throw new Error("Missing INSFORGE_BASE_URL or ANON_KEY");
 
         const insforge = createClient({
             baseUrl: supabaseUrl,
             anonKey: supabaseKey,
-            auth: {
-                persistSession: false,
-                autoRefreshToken: false,
-                detectSessionInUrl: false,
-            }
+            auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
         });
 
         const genAI = new GoogleGenerativeAI(googleKey);
-        const model = genAI.getGenerativeModel({
-            model: "gemini-3-flash-preview",
-            // systemInstruction is set later or moved here. 
-            // Note: systemInstruction in getGenerativeModel might be supported in newer SDKs. 
-            // If it fails, we can add it to the history as a 'user' message or 'system' role if supported.
-            // For now, let's keep it but wrap in try/catch if model creation fails.
-        });
 
-        // 3. Fetch Context
-        console.log(`[DB] Fetching analyses for wallet: ${patient_wallet}`);
-        const { data: analyses, error: analysisError } = await insforge.database
-            .from('analyses')
-            .select('summary, risk_score, conditions, specialist, urgency, created_at')
-            .eq('patient_wallet', patient_wallet)
-            .order('created_at', { ascending: false })
-            .order('created_at', { ascending: false });
-        // .limit(5); // Removed limit to access all files as requested
+        // 3. Fetch context + history IN PARALLEL (big speed boost)
+        const [analysesResult, historyResult] = await Promise.all([
+            insforge.database
+                .from('analyses')
+                .select('summary, risk_score, conditions, specialist, urgency, created_at')
+                .eq('patient_wallet', patient_wallet)
+                .order('created_at', { ascending: false })
+                .limit(5),
+            insforge.database
+                .from('chat_history')
+                .select('role, message')
+                .eq('patient_wallet', patient_wallet)
+                .order('created_at', { ascending: false })
+                .limit(10),
+        ]);
 
-        if (analysisError) {
-            console.error("[DB Error] Fetching analyses:", analysisError);
-            throw new Error(`Database Error (Analyses): ${analysisError.message}`);
-        }
+        const analyses = analysesResult.data;
+        const history = historyResult.data;
 
-        console.log(`[DB] Found ${analyses ? analyses.length : 0} analyses`);
-
-        // 4. Fetch History
-        console.log(`[DB] Fetching chat history`);
-        const { data: history, error: historyError } = await insforge.database
-            .from('chat_history')
-            .select('role, message')
-            .eq('patient_wallet', patient_wallet)
-            .order('created_at', { ascending: false })
-            .limit(10);
-
-        if (historyError) {
-            console.error("[DB Error] Fetching history:", historyError);
-            throw new Error(`Database Error (History): ${historyError.message}`);
-        }
-
-        // Build context from analyses
+        // 4. Build context (compact format = fewer tokens = faster)
         const analysisContext = analyses && analyses.length > 0
-            ? analyses.map((a, i) => `Report ${i + 1}: Summary: ${a.summary} | Risk: ${a.risk_score}/100 | Conditions: ${a.conditions?.join(', ')} | Specialist: ${a.specialist} | Urgency: ${a.urgency}`).join('\n')
-            : 'No previous reports found for this patient.';
+            ? analyses.map((a, i) => `[${i + 1}] ${a.summary} | Risk:${a.risk_score} | ${a.conditions?.join(',')} | ${a.specialist} | ${a.urgency}`).join('\n')
+            : 'No reports found.';
 
-        const systemInstruction = `You are a professional medical AI assistant for MediChain AI. You help patients understand their medical reports, risk scores, and recommended next steps.
-        
-IMPORTANT RULES:
-- You are NOT a replacement for professional medical advice
-- Always recommend consulting a healthcare professional for serious concerns
-- Be empathetic, clear, and avoid overly technical jargon
-- If asked about something outside the patient's reports, provide general health information with appropriate disclaimers
+        const systemInstruction = `You are MediLock AI, an advanced, empathetic, and highly professional medical assistant. Your primary goal is to help patients understand their medical reports, health risks, and actionable next steps while strictly adhering to safety guidelines.
 
-PATIENT CONTEXT:
+CORE PERSONALITY & TONE:
+- Empathetic and Reassuring: Always start with a warm, caring, and professional tone. Acknowledge patient concerns.
+- Clear and Accessible: Explain complex medical terms using simple, everyday language. Avoid overwhelming jargon.
+- Structured and Organized: Use bullet points, bold text, and clear paragraphs to make information easy to digest.
+- Objective yet Supportive: Provide factual insights from the reports without causing unnecessary panic.
+
+STRICT SAFETY RULES:
+1. NEVER diagnose a condition or prescribe medication. You are an AI assistant, not a doctor.
+2. ALWAYS include a clear disclaimer that your advice is informational and does not replace professional medical consultation.
+3. For serious concerns, high risk scores, or emergencies, urgently recommend consulting a healthcare professional or visiting an ER.
+4. If a question is outside the scope of the provided reports, offer general health information but reiterate your limitations.
+
+AVAILABLE PATIENT REPORTS:
 ${analysisContext}
 
-You MUST respond in this exact JSON format:
-{
-  "answer": "Your detailed, helpful response",
-  "warning": "Any important medical disclaimers or warnings (empty string if none)",
-  "confidence": 0.85,
-  "tool_call": { 
-      "type": "book_appointment", 
-      "specialty": "Cardiology", 
-      "doctor_name": "Dr. Smith" 
-  } // Optional: Only include this if user wants to perform an action
-}
+INSTRUCTIONS FOR JSON OUTPUT:
+Return your response STRICTLY as a JSON object with the following fields:
+- "answer": Your detailed, supportive, and structured response using Markdown (e.g., **bold**, bullet points).
+- "warning": A brief, specific disclaimer or warning relevant to their query (e.g., "Please consult your doctor immediately."). Leave as an empty string if entirely benign.
+- "confidence": A number between 0.0 and 1.0 reflecting your confidence in the answer based on the provided context.`;
 
-If the user asks to book an appointment, set "tool_call" with type "book_appointment". Infer specialty/doctor if possible.
-The confidence should be 0.0-1.0 based on how well the question relates to available data.`;
-
-        // Update model with system instruction if possible, or just proceed
-        // The previous code passed systemInstruction to getGenerativeModel. 
-        // We will re-instantiate or just assume it worked.
-
-        // 5. Prepare Chat
+        // 5. Build chat history
         let chatHistory = [];
         if (history && history.length > 0) {
-            const reversedHistory = [...history].reverse();
-            chatHistory = reversedHistory.map(h => ({
-                role: h.role === 'user' ? 'user' : 'model',
-                parts: [{ text: h.message }]
-            }));
-
-            // Ensure history starts with user message for Gemini
+            chatHistory = [...history].reverse()
+                .map(h => ({ role: h.role === 'user' ? 'user' : 'model', parts: [{ text: h.message }] }));
             while (chatHistory.length > 0 && chatHistory[0].role !== 'user') {
                 chatHistory.shift();
             }
         }
 
-        // Add system instruction as the first message if needed, but 'systemInstruction' param is better.
-        // We'll trust the checked-in code used it.
+        // 6. Send to Gemini (using stable flash model for speed)
         const chat = genAI.getGenerativeModel({
-            model: "gemini-3-flash-preview",
-            systemInstruction: systemInstruction
+            model: "gemini-2.5-flash",
+            systemInstruction,
         }).startChat({
             history: chatHistory,
             generationConfig: {
-                temperature: 0.4,
+                temperature: 0.3,
                 responseMimeType: "application/json",
+                maxOutputTokens: 1024,
             }
         });
 
-        console.log(`[AI] Sending message: ${message}`);
         const result = await chat.sendMessage(message);
         const responseText = result.response.text();
-        console.log(`[AI] Response: ${responseText.slice(0, 100)}...`);
 
-        // ... (JSON parsing logic is fine, let's keep it mostly same but formatted)
+        // 7. Parse response
         let response;
         try {
-            const cleanedText = responseText.replace(/```json\n?|\n?```/g, '').trim();
-            response = JSON.parse(cleanedText);
-        } catch (e) {
-            console.warn("Retrying JSON parse on raw text due to:", e);
+            response = JSON.parse(responseText.replace(/```json\n?|\n?```/g, '').trim());
+        } catch {
             try {
                 const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-                if (jsonMatch) {
-                    response = JSON.parse(jsonMatch[0]);
-                } else {
-                    throw new Error("No JSON found in response");
-                }
-            } catch (innerError) {
-                console.error("Failed to parse AI response:", responseText, innerError);
-                response = {
-                    answer: responseText,
-                    warning: 'Note: AI response format was unexpected.',
-                    confidence: 0.5,
-                };
+                response = jsonMatch ? JSON.parse(jsonMatch[0]) : { answer: responseText, warning: '', confidence: 0.5 };
+            } catch {
+                response = { answer: responseText, warning: '', confidence: 0.5 };
             }
         }
 
-        // 6. Save to DB
-        console.log(`[DB] Saving interaction`);
-        // Save user message
-        await insforge.database.from('chat_history').insert([
-            { patient_wallet, role: 'user', message: message }
-        ]);
-
-        // Save assistant message
-        const { error: insertError } = await insforge.database.from('chat_history').insert([
-            {
-                patient_wallet,
-                role: 'assistant', // DB uses 'assistant'
-                message: response.answer,
-                warning: response.warning,
-                confidence: response.confidence,
-            }
-        ]);
-
-        if (insertError) {
-            console.error("[DB Error] Saving chat:", insertError);
-            // Don't throw here, just log, so we can still return the response to user
-        }
+        // 8. Save to DB (fire-and-forget — don't await, return response immediately)
+        insforge.database.from('chat_history').insert([
+            { patient_wallet, role: 'user', message },
+            { patient_wallet, role: 'assistant', message: response.answer, warning: response.warning, confidence: response.confidence },
+        ]).then(() => console.log("[DB] Chat saved")).catch(e => console.error("[DB] Save error:", e));
 
         return new Response(JSON.stringify(response), {
             status: 200,
@@ -227,11 +145,7 @@ The confidence should be 0.0-1.0 based on how well the question relates to avail
 
     } catch (err) {
         console.error("Chat Error:", err);
-        return new Response(JSON.stringify({
-            error: 'Chat failed',
-            details: err.message,
-            stack: err.stack
-        }), {
+        return new Response(JSON.stringify({ error: 'Chat failed', details: err.message }), {
             status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
     }

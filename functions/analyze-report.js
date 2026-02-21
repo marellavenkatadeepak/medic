@@ -51,7 +51,7 @@ export default async function (req) {
         }
 
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
         // Use provided base64 file directly
         console.log(`[Processing] Analyzing uploaded file: ${file_name || 'unknown'}`);

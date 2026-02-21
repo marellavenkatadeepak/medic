@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useWallet } from '@/hooks/useWallets';
+import { useWallet } from '@/hooks/useWallet';
 
 export default function Navbar() {
     const { address, isConnected, isConnecting, connect, disconnect } = useWallet();

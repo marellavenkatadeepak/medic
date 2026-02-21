@@ -2,7 +2,7 @@
 
 interface RiskScoreProps {
     score: number;
-    size?: 'sm' | 'md' | 'lg';
+    size?: 'xs' | 'sm' | 'md' | 'lg';
 }
 
 export default function RiskScore({ score, size = 'md' }: RiskScoreProps) {
@@ -14,14 +14,14 @@ export default function RiskScore({ score, size = 'md' }: RiskScoreProps) {
     };
 
     const config = getColor();
-    const dims = size === 'sm' ? 80 : size === 'md' ? 120 : 160;
-    const strokeW = size === 'sm' ? 6 : 8;
+    const dims = size === 'xs' ? 44 : size === 'sm' ? 80 : size === 'md' ? 120 : 160;
+    const strokeW = size === 'xs' ? 4 : size === 'sm' ? 6 : 8;
     const radius = (dims - strokeW) / 2;
     const circumference = 2 * Math.PI * radius;
     const offset = circumference - (score / 100) * circumference;
 
     return (
-        <div className="flex flex-col items-center gap-2">
+        <div className={`flex flex-col items-center justify-center ${size === 'xs' ? '' : 'gap-2'}`}>
             <div className="relative" style={{ width: dims, height: dims }}>
                 <svg width={dims} height={dims} className="-rotate-90">
                     <circle cx={dims / 2} cy={dims / 2} r={radius} stroke="rgba(55,65,81,0.5)" strokeWidth={strokeW} fill="none" />
@@ -37,13 +37,15 @@ export default function RiskScore({ score, size = 'md' }: RiskScoreProps) {
                     />
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className={`font-bold ${config.class} ${size === 'sm' ? 'text-lg' : size === 'md' ? 'text-3xl' : 'text-4xl'}`}>
+                    <span className={`font-bold ${config.class} ${size === 'xs' ? 'text-sm' : size === 'sm' ? 'text-lg' : size === 'md' ? 'text-3xl' : 'text-4xl'}`}>
                         {score}
                     </span>
-                    {size !== 'sm' && <span className="text-[10px] text-gray-500 uppercase tracking-wider">/ 100</span>}
+                    {(size !== 'sm' && size !== 'xs') && <span className="text-[10px] text-gray-500 uppercase tracking-wider">/ 100</span>}
                 </div>
             </div>
-            <span className={`text-xs font-semibold uppercase tracking-wider ${config.class}`}>{config.label}</span>
+            {size !== 'xs' && (
+                <span className={`text-xs font-semibold uppercase tracking-wider ${config.class}`}>{config.label}</span>
+            )}
         </div>
     );
 }

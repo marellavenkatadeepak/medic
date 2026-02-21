@@ -80,6 +80,15 @@ export default function DoctorDashboard() {
     const [isSavingNote, setIsSavingNote] = useState(false);
     const [consultNotes, setConsultNotes] = useState<ConsultationNote[]>([]);
 
+    const checkRegistration = async () => {
+        try {
+            const role = await getUserRole();
+            setIsRegistered(role === 2); // 2 = Doctor
+        } catch {
+            setIsRegistered(false);
+        }
+    };
+
     useEffect(() => {
         if (!isConnected) {
             setIsLoading(false);
@@ -88,12 +97,8 @@ export default function DoctorDashboard() {
         loadProfile();
         loadGrantedRecords();
         loadAppointments();
+        checkRegistration();
     }, [isConnected, address]);
-
-    // Use database profile as registration indicator (no blockchain needed)
-    useEffect(() => {
-        if (profile) setIsRegistered(true);
-    }, [profile]);
 
     const handleRegister = async () => {
         if (!address) return;
@@ -142,6 +147,12 @@ export default function DoctorDashboard() {
 
     const saveProfile = async () => {
         if (!address) return;
+
+        if (!isRegistered) {
+            alert("Please click 'Register as Doctor' at the top of the page first!");
+            return;
+        }
+
         setIsSavingProfile(true);
         try {
             if (profile) {
@@ -318,25 +329,6 @@ export default function DoctorDashboard() {
         }
     };
 
-    // ... (inside the JSX for the Connect button)
-    <button
-        onClick={async () => {
-            try {
-                const res = await fetch(`${process.env.NEXT_PUBLIC_INSFORGE_BASE_URL}/functions/v1/calendar-auth?wallet=${address}`, {
-                    headers: {
-                        'Authorization': `Bearer ${process.env.NEXT_PUBLIC_INSFORGE_ANON_KEY}`
-                    }
-                });
-                const { url } = await res.json();
-                if (url) window.location.href = url;
-            } catch (err) {
-                console.error('Failed to start calendar auth:', err);
-            }
-        }}
-        className="px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-medium hover:bg-blue-500/20 transition-all"
-    >
-        Connect
-    </button>
 
     // When a patient record is selected, load consultation notes
     useEffect(() => {
@@ -457,7 +449,7 @@ export default function DoctorDashboard() {
                                 <span className="bg-black text-white text-xs font-bold px-2 py-0.5">{grants.length}</span>
                             </div>
 
-                            <div className="space-y-3 max-h-[700px] overflow-y-auto pr-2 custom-scrollbar">
+                            <div className="space-y-0 border-2 border-black bg-white max-h-[700px] overflow-y-auto custom-scrollbar shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
                                 {isLoading ? (
                                     <div className="p-8 text-center border-2 border-dashed border-gray-300 rounded-xl">
                                         <div className="animate-spin h-6 w-6 border-2 border-black border-t-transparent rounded-full mx-auto mb-2"></div>
@@ -473,9 +465,9 @@ export default function DoctorDashboard() {
                                         <div
                                             key={g.id}
                                             onClick={() => setSelectedGrant(g)}
-                                            className={`p-4 cursor-pointer transition-all border-2 relative group ${selectedGrant?.id === g.id
-                                                ? 'bg-black text-white border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)] scale-[1.02]'
-                                                : 'bg-white border-black text-black hover:bg-gray-50 hover:translate-x-1'
+                                            className={`p-3 cursor-pointer transition-all border-b-2 last:border-b-0 relative group ${selectedGrant?.id === g.id
+                                                ? 'bg-black text-white border-black shadow-[inset_4px_0px_0px_0px_rgba(255,255,255,1)]'
+                                                : 'bg-white border-black text-black hover:bg-gray-50'
                                                 }`}
                                         >
                                             <div className="flex justify-between items-start mb-1">
@@ -509,83 +501,110 @@ export default function DoctorDashboard() {
                             {selectedGrant?.analysis ? (
                                 <div className="space-y-6 animate-fadeIn">
                                     {/* Main Analysis Card */}
-                                    <div className="bg-white border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-0 overflow-hidden">
-                                        {/* Card Header */}
-                                        <div className="bg-gray-50 border-b-2 border-black p-6 flex flex-wrap gap-6 items-start justify-between">
-                                            <div>
+                                    <div className="bg-white rounded-3xl p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 relative overflow-hidden">
+                                        <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-indigo-50 to-cyan-50 rounded-full blur-3xl -mr-20 -mt-20 opacity-50 pointer-events-none"></div>
+                                        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
+                                            <div className="flex-1">
                                                 <div className="flex items-center gap-3 mb-2">
-                                                    <h1 className="text-2xl font-black text-black leading-tight">
+                                                    <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">
                                                         {selectedGrant.analysis.file_name}
                                                     </h1>
-                                                    <span className={`px-3 py-1 text-xs font-bold border-2 border-black uppercase ${urgencyColors[selectedGrant.analysis.urgency]?.replace('text-', 'text-black ').replace('bg-', 'bg-') || 'bg-gray-200'
+                                                    <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${selectedGrant.analysis.urgency === 'critical' ? 'bg-red-50 text-red-600 border border-red-200' :
+                                                        selectedGrant.analysis.urgency === 'high' ? 'bg-orange-50 text-orange-600 border border-orange-200' :
+                                                            selectedGrant.analysis.urgency === 'medium' ? 'bg-yellow-50 text-yellow-600 border border-yellow-200' :
+                                                                'bg-green-50 text-green-600 border border-green-200'
                                                         }`}>
                                                         {selectedGrant.analysis.urgency} Priority
                                                     </span>
                                                 </div>
-                                                <div className="flex items-center gap-4 text-xs font-mono text-gray-600">
-                                                    <span className="flex items-center gap-1">
-                                                        👤 PATIENT: <span className="bg-gray-100 px-1 border border-gray-300 rounded">{selectedGrant.patient_wallet}</span>
+                                                <div className="flex items-center gap-4 text-sm font-medium text-gray-500 mb-2">
+                                                    <span className="flex items-center gap-1.5">
+                                                        <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                                        </svg>
+                                                        Patient: <span className="font-mono text-xs bg-gray-100 px-2 py-1 rounded-md text-gray-600">{selectedGrant.patient_wallet.slice(0, 8)}...{selectedGrant.patient_wallet.slice(-4)}</span>
                                                     </span>
-                                                    <span className="flex items-center gap-1">
-                                                        📅 DATE: {new Date(selectedGrant.analysis.created_at).toLocaleDateString()}
-                                                    </span>
+                                                    <span>•</span>
+                                                    <span>📅 {new Date(selectedGrant.analysis.created_at).toLocaleDateString()}</span>
                                                 </div>
                                             </div>
 
-                                            <div className="flex items-center gap-4">
-                                                <div className="text-right">
-                                                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-1">Risk Score</p>
-                                                    <div className="flex items-center gap-2 justify-end">
-                                                        <span className="text-3xl font-black text-black">{selectedGrant.analysis.risk_score}</span>
-                                                        <span className="text-sm text-gray-400">/ 100</span>
+                                            <div className="flex bg-gray-50/50 rounded-2xl p-6 border border-gray-100 items-center gap-6 min-w-[200px] justify-center shadow-inner">
+                                                <div className="text-center">
+                                                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Risk Score</p>
+                                                    <div className="flex items-baseline justify-center gap-1">
+                                                        <span className="text-5xl font-black text-gray-900 tracking-tighter">{selectedGrant.analysis.risk_score}</span>
+                                                        <span className="text-sm font-medium text-gray-400">/ 100</span>
                                                     </div>
                                                 </div>
-                                                <RiskScore score={selectedGrant.analysis.risk_score} size="md" />
+                                                <div className="hidden sm:block">
+                                                    <RiskScore score={selectedGrant.analysis.risk_score} size="md" />
+                                                </div>
                                             </div>
                                         </div>
+                                    </div>
 
-                                        {/* Content Body */}
-                                        <div className="p-6 grid md:grid-cols-3 gap-8">
-                                            {/* Left Col: Summary & Specs */}
-                                            <div className="md:col-span-2 space-y-6">
-                                                <div>
-                                                    <h3 className="text-xs font-black uppercase tracking-widest text-black mb-3 border-l-4 border-indigo-500 pl-3">
-                                                        AI Exec Summary
-                                                    </h3>
-                                                    <p className="text-sm text-gray-800 leading-relaxed font-medium">
-                                                        {selectedGrant.analysis.summary}
+                                    {/* Content Body */}
+                                    <div className="grid lg:grid-cols-3 gap-8">
+                                        {/* Left Col: Summary & Specs */}
+                                        <div className="lg:col-span-2 space-y-8">
+                                            {/* Summary */}
+                                            <div className="bg-white rounded-3xl p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 transition-all hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]">
+                                                <div className="flex items-center gap-3 mb-6">
+                                                    <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-500">
+                                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                                        </svg>
+                                                    </div>
+                                                    <h3 className="text-lg font-bold text-gray-900">AI Exec Summary</h3>
+                                                </div>
+                                                <p className="text-base text-gray-600 leading-relaxed font-medium">
+                                                    {selectedGrant.analysis.summary}
+                                                </p>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="bg-gradient-to-br from-blue-50 to-indigo-50/30 rounded-2xl p-6 border border-blue-100/50 relative overflow-hidden group">
+                                                    <div className="absolute -right-4 -bottom-4 opacity-10 transform group-hover:scale-110 group-hover:-rotate-12 transition-all duration-500">
+                                                        <span className="text-8xl">👨‍⚕️</span>
+                                                    </div>
+                                                    <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-2 relative z-10">Recommended Specialist</p>
+                                                    <p className="text-xl font-bold text-gray-900 relative z-10">
+                                                        {selectedGrant.analysis.specialist}
                                                     </p>
                                                 </div>
 
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <div className="bg-blue-50 p-4 border-2 border-black">
-                                                        <p className="text-[10px] font-bold uppercase text-blue-800 mb-1">Recommended Specialist</p>
-                                                        <p className="text-lg font-bold text-black flex items-center gap-2">
-                                                            🩺 {selectedGrant.analysis.specialist}
-                                                        </p>
+                                                <div className="bg-gradient-to-br from-purple-50 to-fuchsia-50/30 rounded-2xl p-6 border border-purple-100/50 relative overflow-hidden group">
+                                                    <div className="absolute -right-4 -bottom-4 opacity-10 transform group-hover:scale-110 group-hover:rotate-12 transition-all duration-500">
+                                                        <span className="text-8xl">🔬</span>
                                                     </div>
-                                                    <div className="bg-purple-50 p-4 border-2 border-black">
-                                                        <p className="text-[10px] font-bold uppercase text-purple-800 mb-1">Detected Conditions</p>
-                                                        <p className="text-lg font-bold text-black">
-                                                            {selectedGrant.analysis.conditions?.length || 0}
-                                                        </p>
-                                                    </div>
+                                                    <p className="text-[10px] font-bold text-purple-600 uppercase tracking-wider mb-2 relative z-10">Detected Conditions</p>
+                                                    <p className="text-4xl font-black text-gray-900 relative z-10">
+                                                        {selectedGrant.analysis.conditions?.length || 0}
+                                                    </p>
                                                 </div>
                                             </div>
+                                        </div>
 
-                                            {/* Right Col: Conditions List */}
-                                            <div className="bg-gray-50 p-4 border-2 border-black h-full">
-                                                <h3 className="text-xs font-black uppercase tracking-widest text-black mb-4">
-                                                    Conditions
-                                                </h3>
-                                                <div className="flex flex-col gap-2">
+                                        {/* Right Col: Conditions List */}
+                                        <div className="lg:col-span-1">
+                                            <div className="bg-white rounded-3xl p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 h-full">
+                                                <div className="flex items-center justify-between mb-6">
+                                                    <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Conditions</h3>
+                                                    <span className="bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-lg text-xs font-bold">{selectedGrant.analysis.conditions?.length || 0}</span>
+                                                </div>
+
+                                                <div className="flex flex-col gap-3">
                                                     {selectedGrant.analysis.conditions?.map((c, i) => (
-                                                        <span key={i} className="px-3 py-2 bg-white border-2 border-black text-xs font-bold text-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                                                            {c}
-                                                        </span>
+                                                        <div key={i} className="group flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 border border-transparent hover:border-gray-100 transition-all cursor-default">
+                                                            <div className="w-2 h-2 rounded-full bg-indigo-500 group-hover:scale-150 transition-transform"></div>
+                                                            <span className="text-sm font-semibold text-gray-700">{c}</span>
+                                                        </div>
                                                     ))}
                                                     {(!selectedGrant.analysis.conditions || selectedGrant.analysis.conditions.length === 0) && (
-                                                        <p className="text-xs text-gray-400 italic">No specific conditions detected.</p>
+                                                        <div className="text-center py-8">
+                                                            <p className="text-sm text-gray-400 font-medium italic">No specific conditions detected.</p>
+                                                        </div>
                                                     )}
                                                 </div>
                                             </div>
@@ -593,48 +612,72 @@ export default function DoctorDashboard() {
                                     </div>
 
                                     {/* Consultation Notes Section */}
-                                    <div className="bg-yellow-50 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6">
-                                        <div className="flex items-center justify-between mb-4">
-                                            <h3 className="text-sm font-black text-black uppercase tracking-wider flex items-center gap-2">
-                                                📝 Doctor's Notes
-                                            </h3>
-                                            <span className="text-[10px] bg-yellow-200 border border-yellow-400 px-2 py-0.5 rounded text-yellow-800 font-bold hidden sm:inline-block">
-                                                PRIVATE & ENCRYPTED
+                                    <div className="bg-gradient-to-b from-yellow-50/50 to-white rounded-3xl p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-yellow-100/50 mt-8 relative overflow-hidden">
+                                        <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-400/10 rounded-full blur-2xl -mr-10 -mt-10"></div>
+
+                                        <div className="flex items-center justify-between mb-8 relative z-10">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 rounded-xl bg-yellow-100 flex items-center justify-center text-yellow-600">
+                                                    <span className="text-lg">📝</span>
+                                                </div>
+                                                <h3 className="text-lg font-bold text-gray-900 tracking-tight">
+                                                    Doctor's Clinical Notes
+                                                </h3>
+                                            </div>
+                                            <span className="text-[10px] bg-yellow-100 border border-yellow-200 px-3 py-1 rounded-full text-yellow-800 font-bold uppercase tracking-widest hidden sm:inline-block shadow-sm">
+                                                Private & Encrypted
                                             </span>
                                         </div>
 
-                                        <div className="flex gap-0 mb-6">
+                                        <div className="flex flex-col sm:flex-row gap-4 mb-8 relative z-10">
                                             <textarea
                                                 value={consultNote}
                                                 onChange={e => setConsultNote(e.target.value)}
-                                                placeholder="Write your clinical observations here..."
+                                                placeholder="Write your clinical observations or treatment plan here..."
                                                 rows={2}
-                                                className="flex-1 bg-white border-2 border-black border-r-0 p-4 text-sm text-black placeholder-gray-400 focus:outline-none focus:bg-yellow-50 transition-colors"
+                                                className="flex-1 bg-white border border-gray-200 rounded-2xl p-4 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400/50 transition-all shadow-sm resize-none"
                                             />
                                             <button
                                                 onClick={saveConsultNote}
                                                 disabled={isSavingNote || !consultNote.trim()}
-                                                className="px-6 font-bold uppercase text-xs bg-black text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                                className="px-8 py-4 self-end sm:self-stretch rounded-2xl font-bold uppercase tracking-wider text-xs bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 min-w-[140px]"
                                             >
-                                                {isSavingNote ? 'Saving...' : 'Add Note'}
+                                                {isSavingNote ? (
+                                                    <span className="flex items-center gap-2">
+                                                        <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                        </svg>
+                                                        Saving
+                                                    </span>
+                                                ) : (
+                                                    <><span>Save Note</span> <span className="text-sm">→</span></>
+                                                )}
                                             </button>
                                         </div>
 
-                                        <div className="space-y-3">
+                                        <div className="space-y-4 relative z-10">
                                             {consultNotes.length === 0 ? (
-                                                <div className="flex flex-col items-center justify-center p-8 text-gray-400 border-2 border-dashed border-yellow-200 rounded">
-                                                    <span className="text-2xl mb-2"></span>
-                                                    <p className="text-xs">No notes added yet.</p>
+                                                <div className="flex flex-col items-center justify-center py-10 text-gray-400 border-2 border-dashed border-gray-200 rounded-2xl bg-gray-50/50">
+                                                    <svg className="w-8 h-8 mb-3 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                                    </svg>
+                                                    <p className="text-sm font-medium">No clinical notes added yet.</p>
                                                 </div>
                                             ) : (
                                                 consultNotes.map(n => (
-                                                    <div key={n.id} className="bg-white border border-black p-4 flex gap-4">
-                                                        <div className="text-[10px] font-mono text-gray-400 whitespace-nowrap pt-1">
-                                                            {new Date(n.created_at).toLocaleDateString()}
-                                                            <br />
-                                                            {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                    <div key={n.id} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 flex flex-col sm:flex-row gap-5 hover:shadow-md transition-shadow">
+                                                        <div className="sm:w-32 shrink-0">
+                                                            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-gray-50 inline-block px-2 py-1 rounded-md mb-1">
+                                                                {new Date(n.created_at).toLocaleDateString()}
+                                                            </div>
+                                                            <div className="text-[10px] font-mono text-gray-400 pl-1">
+                                                                {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                            </div>
                                                         </div>
-                                                        <p className="text-sm text-black font-medium leading-relaxed">{n.note}</p>
+                                                        <p className="text-sm text-gray-700 font-medium leading-relaxed bg-gray-50/50 p-4 rounded-xl border border-gray-100 flex-1">
+                                                            {n.note}
+                                                        </p>
                                                     </div>
                                                 ))
                                             )}

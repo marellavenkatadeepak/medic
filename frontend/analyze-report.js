@@ -111,7 +111,7 @@ export default async function (req) {
         Ensure risk_score is a number. Extract biomarkers as key-value pairs where possible.`;
 
         // Switch to stable model for reliability verification
-        const primaryModelId = "gemini-3-flash-preview";
+        const primaryModelId = "gemini-2.5-flash";
 
         let responseText;
         let model;

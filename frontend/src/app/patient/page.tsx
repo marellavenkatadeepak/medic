@@ -32,6 +32,7 @@ interface Analysis {
     urgency: string;
     record_hash: string;
     tx_hash?: string;
+    record_id?: number;
     created_at: string;
 }
 
@@ -192,10 +193,13 @@ export default function PatientDashboard() {
 
                 setUploadStatus('⛓️ Recording on blockchain...');
                 try {
-                    const { tx } = await storeRecord(analysis.analysis.record_hash, analysis.analysis.id);
+                    const { tx, recordId } = await storeRecord(analysis.analysis.record_hash, analysis.analysis.id);
                     await insforge.database
                         .from('analyses')
-                        .update({ tx_hash: tx.hash })
+                        .update({
+                            tx_hash: tx.hash,
+                            ...(recordId !== undefined && { record_id: recordId })
+                        })
                         .eq('id', analysis.analysis.id);
                 } catch (blockchainErr) {
                     console.warn('Blockchain storage skipped:', blockchainErr);
@@ -238,10 +242,13 @@ export default function PatientDashboard() {
                 setUploadStatus('⛓️ Recording on blockchain...');
 
                 try {
-                    const { tx } = await storeRecord(analysis.analysis.record_hash, analysis.analysis.id);
+                    const { tx, recordId } = await storeRecord(analysis.analysis.record_hash, analysis.analysis.id);
                     await insforge.database
                         .from('analyses')
-                        .update({ tx_hash: tx.hash })
+                        .update({
+                            tx_hash: tx.hash,
+                            ...(recordId !== undefined && { record_id: recordId })
+                        })
                         .eq('id', analysis.analysis.id);
                 } catch (blockchainErr) {
                     console.warn('Blockchain storage skipped:', blockchainErr);
@@ -411,45 +418,69 @@ export default function PatientDashboard() {
                                 </div>
                             </div>
                             <div className="p-4">
-                                <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                                <div className="space-y-0 border-2 border-black bg-white max-h-[600px] overflow-y-auto custom-scrollbar shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                                     {records.length === 0 ? (
                                         <div className="p-8 text-center border-2 border-dashed border-gray-400">
                                             <p className="text-sm text-gray-500 font-mono">No records found locally.</p>
                                         </div>
                                     ) : (
-                                        records.map(r => (
-                                            <div
-                                                key={r.id}
-                                                onClick={() => setSelectedRecord(r)}
-                                                className={`cursor-pointer p-4 border-2 border-black transition-all ${selectedRecord?.id === r.id
-                                                    ? 'bg-retro-accent-green shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] translate-x-[-2px] translate-y-[-2px]'
-                                                    : 'bg-white hover:bg-gray-50'
-                                                    }`}
-                                            >
-                                                <div className="flex justify-between items-start mb-2">
-                                                    <h3 className="font-bold text-sm truncate pr-2 flex-1">{r.file_name}</h3>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-[10px] font-mono border border-black px-1">{new Date(r.created_at).toLocaleDateString()}</span>
-                                                        <button
-                                                            onClick={(e) => deleteRecord(r.id, e)}
-                                                            className="w-5 h-5 flex items-center justify-center hover:bg-red-100 rounded text-gray-500 hover:text-red-500 font-bold"
-                                                            title="Delete Record"
-                                                        >
-                                                            ×
-                                                        </button>
+                                        records.map(r => {
+                                            const isSelected = selectedRecord?.id === r.id;
+                                            return (
+                                                <div
+                                                    key={r.id}
+                                                    onClick={() => setSelectedRecord(r)}
+                                                    className={`group relative cursor-pointer p-4 border-b-2 border-black last:border-b-0 transition-all overflow-hidden ${isSelected
+                                                        ? 'bg-green-50'
+                                                        : 'bg-white hover:bg-gray-50'
+                                                        }`}
+                                                >
+                                                    {/* Active Indicator Bar */}
+                                                    {isSelected && (
+                                                        <div className="absolute left-0 top-0 bottom-0 w-2 bg-retro-accent-green border-r-2 border-black" />
+                                                    )}
+
+                                                    <div className="flex items-center gap-3 pl-2">
+                                                        {/* Document Icon */}
+                                                        <div className={`shrink-0 w-10 h-10 rounded-full border-2 border-black flex items-center justify-center font-bold text-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${r.urgency === 'critical' ? 'bg-red-400' : r.urgency === 'high' ? 'bg-orange-400' : r.urgency === 'medium' ? 'bg-yellow-400' : 'bg-green-400'
+                                                            }`}>
+                                                            📄
+                                                        </div>
+
+                                                        {/* Content */}
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center justify-between gap-2 mb-1">
+                                                                <h3 className="font-bold text-sm truncate text-gray-900 group-hover:text-black transition-colors" title={r.file_name}>
+                                                                    {r.file_name.replace(/\.[^/.]+$/, "")}
+                                                                </h3>
+                                                                <div className="shrink-0 scale-90 origin-right">
+                                                                    <RiskScore score={r.risk_score} size="xs" />
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex items-center justify-between">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-[10px] font-mono text-gray-500 uppercase border border-gray-200 px-1.5 py-0.5 bg-white/50 rounded-sm">
+                                                                        {new Date(r.created_at).toLocaleDateString()}
+                                                                    </span>
+                                                                    <span className={`text-[10px] font-bold tracking-wider uppercase px-1.5 py-0.5 border border-black rounded-sm ${r.urgency === 'critical' ? 'bg-red-100 text-red-800' : r.urgency === 'high' ? 'bg-orange-100 text-orange-800' : r.urgency === 'medium' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'
+                                                                        }`}>
+                                                                        {r.urgency}
+                                                                    </span>
+                                                                </div>
+
+                                                                <button
+                                                                    onClick={(e) => deleteRecord(r.id, e)}
+                                                                    className={`shrink-0 flex items-center justify-center w-6 h-6 rounded-sm border-2 border-transparent hover:border-black hover:bg-red-200 text-gray-400 hover:text-red-600 transition-all ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                                                                    title="Delete Record"
+                                                                >
+                                                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                                                                </button>
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex gap-1">
-                                                        {r.urgency === 'critical' && <span className="w-3 h-3 bg-red-500 border border-black rounded-full"></span>}
-                                                        {r.urgency === 'high' && <span className="w-3 h-3 bg-orange-500 border border-black rounded-full"></span>}
-                                                        {r.urgency === 'medium' && <span className="w-3 h-3 bg-yellow-500 border border-black rounded-full"></span>}
-                                                        {r.urgency === 'low' && <span className="w-3 h-3 bg-green-500 border border-black rounded-full"></span>}
-                                                    </div>
-                                                    <RiskScore score={r.risk_score} size="xs" />
-                                                </div>
-                                            </div>
-                                        ))
+                                            );
+                                        })
                                     )}
                                 </div>
                             </div>
@@ -508,7 +539,11 @@ export default function PatientDashboard() {
 
                                         {/* Access control panel */}
                                         {activeTab === 'access' && (
-                                            <AccessManager analysisId={selectedRecord.id} patientWallet={address ? address : undefined} />
+                                            <AccessManager
+                                                analysisId={selectedRecord.id}
+                                                recordId={selectedRecord.record_id}
+                                                patientWallet={address ? address : undefined}
+                                            />
                                         )}
 
                                         {/* Appointments panel */}

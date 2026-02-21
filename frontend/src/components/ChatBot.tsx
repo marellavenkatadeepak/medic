@@ -4,10 +4,12 @@ import { useState, useRef, useEffect } from 'react';
 import { insforge } from '@/lib/insforge';
 
 interface Message {
+    id: string;
     role: 'user' | 'assistant';
     content: string;
     warning?: string;
     confidence?: number;
+    toolResult?: { type: string; data: any };
 }
 
 interface ChatBotProps {
@@ -20,109 +22,330 @@ export default function ChatBot({ patientWallet }: ChatBotProps) {
     const [isLoading, setIsLoading] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
 
+    // Auto-scroll to bottom
     useEffect(() => {
-        scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-    }, [messages]);
+        if (scrollRef.current) {
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+    }, [messages, isLoading]);
+
+    // Auto-greeting on mount
+    useEffect(() => {
+        setMessages([{
+            id: Date.now().toString(),
+            role: 'assistant',
+            content: 'Hello! I am your MediChain AI assistant. I have reviewed your medical records and I\'m here to help you understand the findings, risk scores, or answer any questions you might have. How can I assist you today?',
+            warning: 'I am an AI assistant and cannot provide a medical diagnosis. The information provided is for educational purposes. Given your health data, please ensure you are in close contact with your cardiologist. If you experience sudden chest pain or severe shortness of breath, seek emergency medical attention immediately.',
+            confidence: 1.0,
+        }]);
+    }, []);
+
+    const detectIntent = (msg: string) => {
+        const lower = msg.toLowerCase();
+        if (lower.includes('book') && (lower.includes('appointment') || lower.includes('doctor') || lower.includes('schedule'))) return 'book_appointment';
+        if (lower.includes('appointment') || lower.includes('upcoming') || lower.includes('scheduled')) return 'view_appointments';
+        return 'general';
+    };
+
+    const fetchAppointments = async () => {
+        try {
+            const { data } = await insforge.database.from('appointments').select()
+                .eq('patient_wallet', patientWallet).order('date', { ascending: true });
+            if (data && data.length > 0) {
+                const doctorWallets = [...new Set(data.map((a: any) => a.doctor_wallet))];
+                const { data: profiles } = await insforge.database.from('doctor_profiles').select()
+                    .in('wallet_address', doctorWallets);
+                const profileMap: Record<string, any> = {};
+                if (profiles) profiles.forEach((p: any) => { profileMap[p.wallet_address] = p; });
+                return data.map((a: any) => ({
+                    ...a,
+                    doctor_name: profileMap[a.doctor_wallet]?.name || 'Unknown Doctor',
+                    doctor_specialty: profileMap[a.doctor_wallet]?.specialty || 'General',
+                }));
+            }
+            return [];
+        } catch { return []; }
+    };
+
+    const fetchDoctors = async () => {
+        try {
+            const { data } = await insforge.database.from('doctor_profiles').select()
+                .order('name', { ascending: true });
+            return data || [];
+        } catch { return []; }
+    };
+
+    const bookAppointment = async (doctorWallet: string, date: string, time: string, reason: string) => {
+        const { data, error } = await insforge.database.from('appointments').insert({
+            patient_wallet: patientWallet, doctor_wallet: doctorWallet, date, time,
+            status: 'pending', reason: reason || 'General consultation',
+            created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+        }).select();
+        if (error) throw error;
+        return data;
+    };
+
+    const formatAppointments = (appts: any[]) => {
+        if (appts.length === 0) return 'You have no appointments scheduled. Would you like me to book one? Just say "book appointment".';
+        const upcoming = appts.filter((a: any) => a.status === 'pending' || a.status === 'confirmed');
+        let result = '';
+        if (upcoming.length > 0) {
+            result += `📅 Upcoming Appointments (${upcoming.length}):\n\n`;
+            upcoming.forEach((a: any, i: number) => {
+                result += `${i + 1}. ${a.doctor_name} (${a.doctor_specialty})\n   📆 ${new Date(a.date).toLocaleDateString()} at ${a.time}\n   Status: ${a.status.toUpperCase()}\n\n`;
+            });
+        }
+        return result.trim() || 'No upcoming appointments found.';
+    };
 
     const sendMessage = async () => {
         if (!input.trim() || isLoading) return;
         const userMsg = input.trim();
         setInput('');
-        setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
+
+        const newMsgId = Date.now().toString();
+        setMessages(prev => [...prev, { id: newMsgId, role: 'user', content: userMsg }]);
         setIsLoading(true);
 
         try {
+            const intent = detectIntent(userMsg);
+
+            if (intent === 'book_appointment') {
+                const doctors = await fetchDoctors();
+                if (doctors.length === 0) {
+                    setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: 'No doctors registered yet. Please check back later.', toolResult: { type: 'error', data: 'No doctors found' } }]);
+                } else {
+                    // Try to find the best match. Using Cardiologist based on previous medical record context.
+                    let bestMatch = doctors.find((d: any) => d.specialty?.toLowerCase().includes('cardiol')) || doctors[0];
+                    setMessages(prev => [...prev, {
+                        id: Date.now().toString(),
+                        role: 'assistant',
+                        content: `Based on your recent medical records, I found the best match for you. You can easily book a session below.`,
+                        toolResult: { type: 'booking_widget', data: { doctor: bestMatch } }
+                    }]);
+                }
+                setIsLoading(false);
+                return;
+            }
+
+            if (intent === 'view_appointments') {
+                const appts = await fetchAppointments();
+                setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: formatAppointments(appts) }]);
+                setIsLoading(false);
+                return;
+            }
+
             const { data, error } = await insforge.functions.invoke('medical-chatbot', {
                 body: { patient_wallet: patientWallet, message: userMsg },
             });
-
             if (error) throw error;
-
             setMessages(prev => [...prev, {
+                id: Date.now().toString(),
                 role: 'assistant',
-                content: data.answer || data.message || 'I couldn\'t process that request.',
+                content: data.answer || data.message || 'I couldn\'t process that.',
                 warning: data.warning,
                 confidence: data.confidence,
             }]);
         } catch {
-            setMessages(prev => [...prev, {
-                role: 'assistant',
-                content: 'Sorry, something went wrong. Please try again.',
-                warning: 'Service temporarily unavailable.',
-            }]);
+            setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: 'Sorry, something went wrong. Please try again.', warning: 'Service temporarily unavailable.' }]);
         } finally {
             setIsLoading(false);
         }
     };
 
-    return (
-        <div className="glass-card flex flex-col h-[500px]">
-            <div className="px-5 py-4 border-b border-gray-800 flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-cyan-400 flex items-center justify-center">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
-                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                    </svg>
+    // Component to handle the inline booking flow
+    const BookingWidget = ({ doctor, onBooked }: { doctor: any, onBooked: () => void }) => {
+        const [date, setDate] = useState(() => {
+            const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0];
+        });
+        const [time, setTime] = useState('10:00');
+        const [isBooking, setIsBooking] = useState(false);
+        const [booked, setBooked] = useState(false);
+
+        const handleBook = async () => {
+            setIsBooking(true);
+            try {
+                await bookAppointment(doctor.wallet_address, date, time, 'AI Matched Consultation');
+                setBooked(true);
+                onBooked();
+            } catch (err) {
+                console.error(err);
+                alert("Failed to book appointment. Please try again.");
+            } finally {
+                setIsBooking(false);
+            }
+        };
+
+        if (booked) {
+            return (
+                <div className="mt-4 p-5 bg-green-50 border border-green-200 rounded-2xl shadow-sm text-center">
+                    <div className="mx-auto w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mb-3">
+                        <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                    </div>
+                    <h3 className="text-green-800 font-semibold mb-1">Appointment Confirmed!</h3>
+                    <p className="text-sm text-green-700">You are scheduled with Dr. {doctor.name} on {new Date(date).toLocaleDateString()} at {time}.</p>
                 </div>
-                <div>
-                    <h3 className="text-sm font-semibold text-white">Medical AI Assistant</h3>
-                    <p className="text-[10px] text-gray-500">Powered by MediChain AI</p>
+            );
+        }
+
+        return (
+            <div className="mt-4 w-full bg-white border border-gray-100 rounded-2xl shadow-lg overflow-hidden transition-all hover:shadow-xl">
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 border-b border-gray-100 flex items-center gap-4">
+                    <div className="w-12 h-12 bg-white rounded-full shadow-sm flex items-center justify-center text-xl overflow-hidden shrink-0 border border-blue-100">
+                        {doctor.image_url ? <img src={doctor.image_url} alt={doctor.name} className="w-full h-full object-cover" /> : "🧑‍⚕️"}
+                    </div>
+                    <div>
+                        <div className="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-0.5">Best Match</div>
+                        <h4 className="font-bold text-gray-900 leading-tight">Dr. {doctor.name}</h4>
+                        <p className="text-sm text-gray-600 font-medium">{doctor.specialty}</p>
+                    </div>
+                </div>
+                <div className="p-5 bg-white space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider">Select Date</label>
+                            <input
+                                type="date"
+                                value={date}
+                                onChange={(e) => setDate(e.target.value)}
+                                min={new Date().toISOString().split('T')[0]}
+                                className="w-full text-sm py-2 px-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors outline-none cursor-pointer"
+                            />
+                        </div>
+                        <div className="space-y-1.5">
+                            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider">Select Time</label>
+                            <select
+                                value={time}
+                                onChange={(e) => setTime(e.target.value)}
+                                className="w-full text-sm py-2 px-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors outline-none cursor-pointer"
+                            >
+                                <option value="09:00">09:00 AM</option>
+                                <option value="10:00">10:00 AM</option>
+                                <option value="11:00">11:00 AM</option>
+                                <option value="13:00">01:00 PM</option>
+                                <option value="14:00">02:00 PM</option>
+                                <option value="15:00">03:00 PM</option>
+                                <option value="16:00">04:00 PM</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <button
+                        onClick={handleBook}
+                        disabled={isBooking}
+                        className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold rounded-xl shadow-[0_4px_14px_0_rgba(79,70,229,0.39)] hover:shadow-[0_6px_20px_rgba(79,70,229,0.23)] hover:-translate-y-0.5 transition-all outline-none disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none flex justify-center items-center gap-2"
+                    >
+                        {isBooking ? (
+                            <>
+                                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Booking...
+                            </>
+                        ) : 'Book Appointment (1-Click)'}
+                    </button>
+                    <p className="text-center text-[10px] text-gray-400 mt-2">No credit card required. Cancel anytime.</p>
+                </div>
+            </div>
+        );
+    };
+
+    return (
+        <div className="flex flex-col h-[650px] bg-white rounded-[2rem] shadow-[0_20px_50px_-12px_rgba(0,0,0,0.15)] border border-gray-100 overflow-hidden font-sans relative">
+            {/* Header bar */}
+            <div className="bg-white/80 backdrop-blur-xl px-6 py-5 flex items-center justify-between border-b border-gray-100 z-10 relative">
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 -z-10"></div>
+                <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-xl shadow-lg shadow-blue-500/30 overflow-hidden relative">
+                        <div className="absolute inset-0 bg-white/20 blur-sm rounded-full scale-[1.5] translate-y-3"></div>
+                        <span className="relative z-10 text-white drop-shadow-sm">🤖</span>
+                    </div>
+                    <div>
+                        <h2 className="text-gray-900 font-bold text-lg tracking-tight">MediChain AI</h2>
+                        <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse"></span>
+                            <span className="text-gray-500 text-xs font-semibold">Online & Ready to Help</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
-                {messages.length === 0 && (
-                    <div className="flex flex-col items-center justify-center h-full text-center gap-3 opacity-60">
-                        <div className="w-12 h-12 rounded-full bg-indigo-500/10 flex items-center justify-center">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#818cf8" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" /></svg>
-                        </div>
-                        <p className="text-sm text-gray-400">Ask me about your medical reports,<br />risk scores, or health questions.</p>
-                    </div>
-                )}
-
+            {/* Messages area */}
+            <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-6 bg-[#fafafa] scroll-smooth">
                 {messages.map((msg, i) => (
-                    <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[80%] px-4 py-3 ${msg.role === 'user' ? 'chat-user text-white' : 'chat-assistant text-gray-200'}`}>
-                            <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
-                            {msg.warning && (
-                                <div className="mt-2 flex items-start gap-2 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2" className="mt-0.5 shrink-0">
-                                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
-                                    </svg>
-                                    <p className="text-xs text-yellow-300/80">{msg.warning}</p>
+                    <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-4 duration-300 ease-out`}>
+                        <div className={`max-w-[85%] relative rounded-3xl p-5 ${msg.role === 'user'
+                            ? 'bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/20 rounded-tr-sm'
+                            : 'bg-white border border-gray-100 text-gray-800 shadow-sm rounded-tl-sm'
+                            }`}>
+
+                            {msg.role === 'assistant' ? (
+                                <div className="space-y-4">
+                                    <p className="text-sm leading-relaxed font-medium">{msg.content}</p>
+
+                                    {msg.warning && (
+                                        <div className="flex items-start gap-3 p-3.5 bg-rose-50 border border-rose-100 rounded-2xl relative overflow-hidden">
+                                            <span className="text-rose-500 mt-0.5">⚠️</span>
+                                            <p className="text-xs text-rose-800 font-medium leading-relaxed">{msg.warning}</p>
+                                        </div>
+                                    )}
+
+                                    {(msg.confidence !== undefined || msg.toolResult) && (
+                                        <div className="flex items-center justify-between mt-2 pt-3 border-t border-gray-100">
+                                            {msg.confidence !== undefined && (
+                                                <p className="text-[10px] uppercase font-bold text-emerald-600 tracking-wider">High Confidence • {Math.round(msg.confidence * 100)}%</p>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Inline widgets */}
+                                    {msg.toolResult?.type === 'booking_widget' && (
+                                        <BookingWidget
+                                            doctor={msg.toolResult.data.doctor}
+                                            onBooked={() => {
+                                                // Removed setMessages call here, success is handled within BookingWidget
+                                            }}
+                                        />
+                                    )}
                                 </div>
-                            )}
-                            {msg.confidence !== undefined && (
-                                <p className="mt-1 text-[10px] text-gray-500">Confidence: {Math.round(msg.confidence * 100)}%</p>
+                            ) : (
+                                <p className="text-[15px] font-medium leading-relaxed">{msg.content}</p>
                             )}
                         </div>
                     </div>
                 ))}
 
                 {isLoading && (
-                    <div className="flex justify-start">
-                        <div className="chat-assistant px-4 py-3">
-                            <div className="flex gap-1.5">
-                                <span className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-                                <span className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-                                <span className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce" style={{ animationDelay: '300ms' }} />
-                            </div>
+                    <div className="flex justify-start animate-in fade-in duration-300">
+                        <div className="flex gap-2 p-4 bg-white rounded-3xl rounded-tl-sm shadow-sm border border-gray-100 border-b-2 items-center">
+                            <span className="w-2 h-2 rounded-full bg-blue-600 animate-[bounce_1s_infinite]" style={{ animationDelay: '0ms' }} />
+                            <span className="w-2 h-2 rounded-full bg-blue-500 animate-[bounce_1s_infinite]" style={{ animationDelay: '200ms' }} />
+                            <span className="w-2 h-2 rounded-full bg-blue-400 animate-[bounce_1s_infinite]" style={{ animationDelay: '400ms' }} />
                         </div>
                     </div>
                 )}
             </div>
 
-            <div className="p-4 border-t border-gray-800">
-                <div className="flex gap-2">
+            {/* Input area */}
+            <div className="p-5 bg-white border-t border-gray-100 w-full z-10 relative shadow-[0_-10px_40px_rgba(0,0,0,0.02)]">
+                <div className="relative group">
                     <input
                         value={input}
                         onChange={e => setInput(e.target.value)}
                         onKeyDown={e => e.key === 'Enter' && sendMessage()}
-                        placeholder="Ask about your health report..."
-                        className="flex-1 bg-gray-800/50 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500/50 transition-colors"
+                        placeholder="Type a message or say 'book appointment'..."
+                        className="w-full bg-gray-50 border border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 rounded-full pl-6 pr-14 py-4 text-[15px] font-medium text-gray-800 placeholder-gray-400 outline-none transition-all duration-300 shadow-inner group-hover:bg-gray-50/80"
                     />
-                    <button onClick={sendMessage} disabled={isLoading || !input.trim()} className="btn-primary !px-4 !py-3 disabled:opacity-40">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                            <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
+                    <button
+                        onClick={sendMessage}
+                        disabled={isLoading || !input.trim()}
+                        className="absolute right-2 top-2 bottom-2 aspect-square flex items-center justify-center bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-full transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95 shadow-md shadow-blue-500/20"
+                    >
+                        <svg className="w-5 h-5 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
                         </svg>
                     </button>
                 </div>

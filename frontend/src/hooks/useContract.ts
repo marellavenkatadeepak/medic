@@ -28,7 +28,23 @@ export function useContract() {
         const contract = getContract();
         const tx = await contract.storeRecord(recordHash, metadataCID);
         const receipt = await tx.wait();
-        return { tx, receipt };
+
+        let recordId: number | undefined;
+        if (receipt && receipt.logs) {
+            for (const log of receipt.logs) {
+                try {
+                    const parsedLog = contract.interface.parseLog(log);
+                    if (parsedLog && parsedLog.name === 'RecordStored') {
+                        recordId = Number(parsedLog.args.recordId);
+                        break;
+                    }
+                } catch (e) {
+                    // Ignore logs that don't match our ABI
+                }
+            }
+        }
+
+        return { tx, receipt, recordId };
     }, [getContract]);
 
     const grantAccess = useCallback(async (doctorAddress: string, recordId: number) => {

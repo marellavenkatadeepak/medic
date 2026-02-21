@@ -73,7 +73,7 @@ export default function DigitalTwin({ analysisData }: DigitalTwinProps) {
 
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const {
-        api, isReady, nodes,
+        api, isReady, nodes, error,
         findNodeIdByName, findAllNodesByPartialName,
         highlightNode, highlightNodeWithColor,
         hideNode, showNode, resetMaterials,
@@ -448,8 +448,18 @@ export default function DigitalTwin({ analysisData }: DigitalTwinProps) {
                 {!isReady && (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/90 z-10">
                         <div className="text-center">
-                            <div className="w-8 h-8 border-2 border-cyan-500/30 border-t-cyan-400 rounded-full animate-spin mx-auto mb-3" />
-                            <div className="text-cyan-500 font-mono text-xs animate-pulse">Initializing Neural Link...</div>
+                            {error ? (
+                                <>
+                                    <div className="text-red-500 font-mono text-sm mb-2">⚠ Neural Link Error</div>
+                                    <div className="text-gray-400 font-mono text-xs">{error}</div>
+                                    <div className="mt-4 text-[10px] text-gray-500 max-w-[200px] mx-auto">Please check your internet connection or disable ad-blockers for Sketchfab.</div>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="w-8 h-8 border-2 border-cyan-500/30 border-t-cyan-400 rounded-full animate-spin mx-auto mb-3" />
+                                    <div className="text-cyan-500 font-mono text-xs animate-pulse">Initializing Neural Link...</div>
+                                </>
+                            )}
                         </div>
                     </div>
                 )}
