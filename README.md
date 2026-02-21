@@ -105,4 +105,4 @@ medilock/
 3. `analyze-report` edge function: AI extracts text + generates analysis
 4. SHA-256 hash stored on blockchain
 5. Patient views AI analysis, chats with AI assistant, watches AI doctor video
-6. Patient can grant/revoke doctor access via smart contract
+6. Patient can grant/revoke doctor access via smart contracts
