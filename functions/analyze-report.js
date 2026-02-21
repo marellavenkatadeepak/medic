@@ -62,7 +62,7 @@ export default async function (req) {
         // Step 2: AI Analysis
         const prompt = `You are a professional medical analysis AI assistant. Analyze the provided medical report and return a structured JSON response. 
         You are NOT replacing a doctor.
-        
+        Do not include any personal information in the JSON response.
         Return ONLY valid JSON in this exact format:
         {
           "summary": "A detailed, empathetic summary (4-6 sentences) focusing on the patient's experience, symptoms, and potential impact on daily life. Avoid cold clinical language.",
@@ -70,7 +70,8 @@ export default async function (req) {
           "conditions": ["list", "of", "detected", "conditions"],
           "biomarkers": { "hemoglobin": "12.5 g/dL", "platelets": "250000 /uL", "wbc": "5.4 10^3/uL", "glucose": "95 mg/dL" },
           "specialist": "Recommended specialist type (e.g. Cardiologist)",
-          "urgency": "low|medium|high|critical"
+          "urgency": "low|medium|high|critical",
+          "improvement_plan": ["Actionable lifestyle/health step 1", "Actionable step 2", "Actionable step 3"]
         }
         
         Ensure risk_score is a number. Extract biomarkers as key-value pairs where possible.`;
@@ -106,7 +107,8 @@ export default async function (req) {
                 conditions: ['Formatted extraction failed'],
                 biomarkers: {},
                 specialist: 'General Practitioner',
-                urgency: 'low'
+                urgency: 'low',
+                improvement_plan: ['Please consult a healthcare professional for a tailored improvement plan.']
             };
         }
 
@@ -121,7 +123,7 @@ export default async function (req) {
         console.log('[DB] Storing analysis record...');
         const { data: dbRecord, error: dbError } = await insforge.database
             .from('analyses')
-            .insert({
+            .insert([{
                 patient_wallet: patient_wallet,
                 file_name: file_name || 'report',
                 file_url: 'direct-upload',
@@ -132,8 +134,9 @@ export default async function (req) {
                 biomarkers: analysis.biomarkers || {},
                 specialist: analysis.specialist || 'General',
                 urgency: analysis.urgency || 'low',
+                improvement_plan: analysis.improvement_plan || [],
                 record_hash: recordHash,
-            })
+            }])
             .select();
 
         if (dbError) {
@@ -153,6 +156,7 @@ export default async function (req) {
                 specialist: analysis.specialist,
                 urgency: analysis.urgency,
                 biomarkers: analysis.biomarkers,
+                improvement_plan: analysis.improvement_plan || [],
                 record_hash: recordHash,
             }
         };

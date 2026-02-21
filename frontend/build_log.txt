@@ -1,4 +1,18 @@
-﻿   ▲ Next.js 15.5.12
+   ▲ Next.js 15.5.12
    - Environments: .env
 
    Creating an optimized production build ...
+ ✓ Compiled successfully in 23.7s
+   Linting and checking validity of types ...
+Failed to compile.
+
+./api_moved_robo/calendar/auth/route.ts:2:24
+Type error: Cannot find module 'googleapis' or its corresponding type declarations.
+
+[0m [90m 1 |[39m [36mimport[39m { [33mNextRequest[39m[33m,[39m [33mNextResponse[39m } [36mfrom[39m [32m'next/server'[39m[33m;[39m
+[31m[1m>[22m[39m[90m 2 |[39m [36mimport[39m { google } [36mfrom[39m [32m'googleapis'[39m[33m;[39m
+ [90m   |[39m                        [31m[1m^[22m[39m
+ [90m 3 |[39m
+ [90m 4 |[39m [90m// Google OAuth2 client[39m
+ [90m 5 |[39m [36mfunction[39m getOAuth2Client() {[0m
+Next.js build worker exited with code: 1 and signal: null

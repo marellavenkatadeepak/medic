@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Maximize2, Minimize2, RotateCcw, Layers, ChevronRight, AlertTriangle, Shield, Activity } from 'lucide-react';
+import { Maximize2, Minimize2, RotateCcw, Layers, ChevronRight, AlertTriangle, Shield, Activity, Sparkles } from 'lucide-react';
 import { useSketchfab } from '../hooks/useSketchfab';
+import { insforge } from '@/lib/insforge';
 
 // ─── ANATOMY MAPPING (EXACT node names from model) ───────────────
 const ANATOMY_MAPPING: Record<string, string> = {
@@ -48,6 +49,7 @@ const muscleDefinitions: OrganDef[] = Object.entries(ANATOMY_MAPPING).map(([abbr
 
 interface DigitalTwinProps {
     analysisData?: any;
+    recordId?: string;
 }
 
 type Status = 'safe' | 'warning' | 'risk';
@@ -61,16 +63,24 @@ interface OrganStatus {
     recommendations: string[];
     markers: { name: string; value: string; status: Status }[];
     normalRange?: string;
+    fromAI?: boolean;
 }
 
-export default function DigitalTwin({ analysisData }: DigitalTwinProps) {
+export default function DigitalTwin({ analysisData, recordId }: DigitalTwinProps) {
     const [selectedMuscle, setSelectedMuscle] = useState<OrganDef | null>(null);
     const [isPanelOpen, setIsPanelOpen] = useState(true);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [currentLayerIndex, setCurrentLayerIndex] = useState(0); // 0 = all visible
     const [hiddenLayers, setHiddenLayers] = useState<Set<string>>(new Set());
     const [riskHighlighted, setRiskHighlighted] = useState(false);
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
 
+    // Initialize analyzed organs from DB if available
+    const [analyzedOrgans, setAnalyzedOrgans] = useState<Set<string>>(
+        new Set(analysisData?.organ_data ? Object.keys(analysisData.organ_data) : [])
+    );
+
+    const containerRef = useRef<HTMLDivElement>(null);
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const {
         api, isReady, nodes, error,
@@ -334,6 +344,94 @@ export default function DigitalTwin({ analysisData }: DigitalTwinProps) {
         restoreAllLayers();
     };
 
+    // ─── AI ORGAN ANALYSIS ───────────────────────────────────────
+    useEffect(() => {
+        if (!selectedMuscle || !analysisData) return;
+
+        const organName = selectedMuscle.displayName;
+
+        const fetchAnalysis = async () => {
+            // Already analyzed? Simulate 3 sec "AI crunch" then display
+            if (analyzedOrgans.has(organName)) {
+                setIsAnalyzing(true);
+                await new Promise(resolve => setTimeout(resolve, 3000));
+                setIsAnalyzing(false);
+                return;
+            }
+
+            // New organ? Actually hit the Edge Function
+            setIsAnalyzing(true);
+            try {
+                const { data, error } = await insforge.functions.invoke('analyze-organ', {
+                    body: { organName, analysisText: JSON.stringify(analysisData) }
+                });
+
+                if (error) throw error;
+                if (data?.organAnalysis) {
+                    const newAnalysis = data.organAnalysis;
+                    setSystemStatus(prev => {
+                        const updatedStatus = {
+                            ...prev,
+                            [organName]: {
+                                ...prev[organName],
+                                ...newAnalysis,
+                                fromAI: true
+                            }
+                        };
+
+                        // Persist to database if we have a recordId
+                        if (recordId) {
+                            // Extract just the AI generated organs to save
+                            const organDataToSave = Object.keys(updatedStatus)
+                                .filter(key => updatedStatus[key].fromAI)
+                                .reduce((obj, key) => {
+                                    //@ts-ignore
+                                    obj[key] = updatedStatus[key];
+                                    return obj;
+                                }, {});
+
+                            insforge.database.from('analyses')
+                                .update({ organ_data: organDataToSave })
+                                .eq('id', recordId)
+                                .then(({ error }) => {
+                                    if (error) console.error("Failed to save organ data:", error);
+                                });
+                        }
+
+                        return updatedStatus;
+                    });
+                    setAnalyzedOrgans(prev => new Set(prev).add(organName));
+                }
+            } catch (err) {
+                console.error('Failed to analyze organ:', err);
+                setAnalyzedOrgans(prev => new Set(prev).add(organName)); // skip analyzing again on error
+            } finally {
+                setIsAnalyzing(false);
+            }
+        };
+
+        fetchAnalysis();
+    }, [selectedMuscle, analysisData, analyzedOrgans]);
+
+    // ─── FULLSCREEN HANDLING ─────────────────────────────────────
+    const toggleFullscreen = useCallback(() => {
+        if (!document.fullscreenElement) {
+            containerRef.current?.requestFullscreen().catch(err => {
+                console.error(`Error attempting to enable fullscreen: ${err.message}`);
+            });
+        } else {
+            document.exitFullscreen();
+        }
+    }, []);
+
+    useEffect(() => {
+        const handleFullscreenChange = () => {
+            setIsFullscreen(!!document.fullscreenElement);
+        };
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+        return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    }, []);
+
     // ─── COMPUTED VALUES ─────────────────────────────────────────
     const riskCount = Object.values(systemStatus).filter(d => d.status === 'risk').length;
     const warningCount = Object.values(systemStatus).filter(d => d.status === 'warning').length;
@@ -359,7 +457,7 @@ export default function DigitalTwin({ analysisData }: DigitalTwinProps) {
 
     // ─── RENDER ──────────────────────────────────────────────────
     return (
-        <div className={`relative bg-gray-950 overflow-hidden border-2 border-cyan-500/60 shadow-[0_0_30px_rgba(6,182,212,0.15)] flex flex-col md:flex-row transition-all duration-300 ${isFullscreen ? 'fixed inset-0 z-50 h-screen w-screen rounded-none' : 'h-[700px] w-full rounded-xl'}`}>
+        <div ref={containerRef} className={`relative bg-gray-950 overflow-hidden border-2 border-cyan-500/60 shadow-[0_0_30px_rgba(6,182,212,0.15)] flex flex-col md:flex-row transition-all duration-300 ${isFullscreen ? 'w-full h-full rounded-none border-0' : 'h-[700px] w-full rounded-xl'}`}>
 
             {/* ═══ LEFT: 3D Viewer ═══ */}
             <div className={`relative flex-1 h-full min-h-[400px] bg-black ${!isPanelOpen ? 'md:w-full' : ''}`}>
@@ -387,7 +485,7 @@ export default function DigitalTwin({ analysisData }: DigitalTwinProps) {
 
                 {/* Control Buttons */}
                 <div className="absolute top-3 right-3 z-30 flex gap-1.5">
-                    <button onClick={() => setIsFullscreen(!isFullscreen)} className="bg-black/60 hover:bg-cyan-900/40 border border-cyan-500/30 text-cyan-400 p-1.5 rounded-lg transition-all hover:shadow-[0_0_10px_rgba(6,182,212,0.3)]" title="Toggle Fullscreen">
+                    <button onClick={toggleFullscreen} className="bg-black/60 hover:bg-cyan-900/40 border border-cyan-500/30 text-cyan-400 p-1.5 rounded-lg transition-all hover:shadow-[0_0_10px_rgba(6,182,212,0.3)]" title="Toggle Fullscreen">
                         {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
                     </button>
                     <button onClick={() => setIsPanelOpen(!isPanelOpen)} className="bg-black/60 hover:bg-cyan-900/40 border border-cyan-500/30 text-cyan-400 p-1.5 rounded-lg transition-all" title="Toggle Panel">
@@ -498,7 +596,17 @@ export default function DigitalTwin({ analysisData }: DigitalTwinProps) {
                                 if (!organEntry) return <div className="text-gray-500 text-xs font-mono">No data available</div>;
                                 const [, data] = organEntry;
                                 return (
-                                    <>
+                                    <div className="relative">
+                                        {/* AI Loading State Overlay */}
+                                        {isAnalyzing && (
+                                            <div className="absolute inset-0 bg-gray-950/80 backdrop-blur-sm z-10 flex flex-col items-center justify-center rounded-lg border border-cyan-500/30 overflow-hidden">
+                                                <div className="absolute inset-0 bg-cyan-500/10 animate-pulse"></div>
+                                                <Sparkles className="text-cyan-400 w-8 h-8 mb-3 animate-[spin_3s_linear_infinite]" />
+                                                <h3 className="text-cyan-400 font-mono text-xs font-bold uppercase tracking-widest mb-1 shadow-cyan-500/50 drop-shadow-md">Generating AI Insights</h3>
+                                                <p className="text-gray-400 font-mono text-[9px]">Deep analyzing {selectedMuscle.displayName}...</p>
+                                            </div>
+                                        )}
+
                                         {/* Risk Score Card */}
                                         <div className={`p-3 rounded-lg border ${getStatusBg(data.status)}`}>
                                             <div className="flex items-center justify-between mb-2">
@@ -578,9 +686,9 @@ export default function DigitalTwin({ analysisData }: DigitalTwinProps) {
                                         )}
 
                                         <div className="text-[9px] text-gray-600 font-mono pt-1 border-t border-gray-800">
-                                            3D Node: {ANATOMY_MAPPING[selectedMuscle.id] || 'N/A'} · ID: {selectedMuscle.id}
+                                            {data.fromAI ? '✨ AI Enhanced Deep Analysis' : '3D Node System Status'} · {ANATOMY_MAPPING[selectedMuscle.id] || 'N/A'}
                                         </div>
-                                    </>
+                                    </div>
                                 );
                             })()}
                         </div>

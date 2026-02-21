@@ -191,8 +191,8 @@ export default function ChatBot({ patientWallet }: ChatBotProps) {
         }
 
         return (
-            <div className="mt-4 w-full bg-white border border-gray-100 rounded-2xl shadow-lg overflow-hidden transition-all hover:shadow-xl">
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 border-b border-gray-100 flex items-center gap-4">
+            <div className="mt-4 w-full bg-white border border-slate-200 rounded-2xl shadow-lg overflow-hidden transition-all hover:shadow-xl">
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 border-b border-slate-200 flex items-center gap-4">
                     <div className="w-12 h-12 bg-white rounded-full shadow-sm flex items-center justify-center text-xl overflow-hidden shrink-0 border border-blue-100">
                         {doctor.image_url ? <img src={doctor.image_url} alt={doctor.name} className="w-full h-full object-cover" /> : "🧑‍⚕️"}
                     </div>
@@ -211,7 +211,7 @@ export default function ChatBot({ patientWallet }: ChatBotProps) {
                                 value={date}
                                 onChange={(e) => setDate(e.target.value)}
                                 min={new Date().toISOString().split('T')[0]}
-                                className="w-full text-sm py-2 px-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors outline-none cursor-pointer"
+                                className="w-full text-sm py-2 px-3 border border-slate-300 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors outline-none cursor-pointer"
                             />
                         </div>
                         <div className="space-y-1.5">
@@ -219,7 +219,7 @@ export default function ChatBot({ patientWallet }: ChatBotProps) {
                             <select
                                 value={time}
                                 onChange={(e) => setTime(e.target.value)}
-                                className="w-full text-sm py-2 px-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors outline-none cursor-pointer"
+                                className="w-full text-sm py-2 px-3 border border-slate-300 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors outline-none cursor-pointer"
                             >
                                 <option value="09:00">09:00 AM</option>
                                 <option value="10:00">10:00 AM</option>
@@ -254,9 +254,9 @@ export default function ChatBot({ patientWallet }: ChatBotProps) {
     };
 
     return (
-        <div className="flex flex-col h-[650px] bg-white rounded-[2rem] shadow-[0_20px_50px_-12px_rgba(0,0,0,0.15)] border border-gray-100 overflow-hidden font-sans relative">
+        <div className="flex flex-col h-[650px] bg-white rounded-[2rem] shadow-[0_20px_50px_-12px_rgba(0,0,0,0.15)] border border-slate-200 overflow-hidden font-sans relative">
             {/* Header bar */}
-            <div className="bg-white/80 backdrop-blur-xl px-6 py-5 flex items-center justify-between border-b border-gray-100 z-10 relative">
+            <div className="bg-white/80 backdrop-blur-xl px-6 py-5 flex items-center justify-between border-b border-slate-200 z-10 relative">
                 <div className="absolute inset-0 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 -z-10"></div>
                 <div className="flex items-center gap-4">
                     <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-xl shadow-lg shadow-blue-500/30 overflow-hidden relative">
@@ -279,7 +279,7 @@ export default function ChatBot({ patientWallet }: ChatBotProps) {
                     <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-4 duration-300 ease-out`}>
                         <div className={`max-w-[85%] relative rounded-3xl p-5 ${msg.role === 'user'
                             ? 'bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/20 rounded-tr-sm'
-                            : 'bg-white border border-gray-100 text-gray-800 shadow-sm rounded-tl-sm'
+                            : 'bg-white border border-slate-200 text-gray-800 shadow-sm rounded-tl-sm'
                             }`}>
 
                             {msg.role === 'assistant' ? (
@@ -294,7 +294,7 @@ export default function ChatBot({ patientWallet }: ChatBotProps) {
                                     )}
 
                                     {(msg.confidence !== undefined || msg.toolResult) && (
-                                        <div className="flex items-center justify-between mt-2 pt-3 border-t border-gray-100">
+                                        <div className="flex items-center justify-between mt-2 pt-3 border-t border-slate-200">
                                             {msg.confidence !== undefined && (
                                                 <p className="text-[10px] uppercase font-bold text-emerald-600 tracking-wider">High Confidence • {Math.round(msg.confidence * 100)}%</p>
                                             )}
@@ -320,7 +320,7 @@ export default function ChatBot({ patientWallet }: ChatBotProps) {
 
                 {isLoading && (
                     <div className="flex justify-start animate-in fade-in duration-300">
-                        <div className="flex gap-2 p-4 bg-white rounded-3xl rounded-tl-sm shadow-sm border border-gray-100 border-b-2 items-center">
+                        <div className="flex gap-2 p-4 bg-white rounded-3xl rounded-tl-sm shadow-sm border border-slate-200 border-b-2 items-center">
                             <span className="w-2 h-2 rounded-full bg-blue-600 animate-[bounce_1s_infinite]" style={{ animationDelay: '0ms' }} />
                             <span className="w-2 h-2 rounded-full bg-blue-500 animate-[bounce_1s_infinite]" style={{ animationDelay: '200ms' }} />
                             <span className="w-2 h-2 rounded-full bg-blue-400 animate-[bounce_1s_infinite]" style={{ animationDelay: '400ms' }} />
@@ -330,14 +330,14 @@ export default function ChatBot({ patientWallet }: ChatBotProps) {
             </div>
 
             {/* Input area */}
-            <div className="p-5 bg-white border-t border-gray-100 w-full z-10 relative shadow-[0_-10px_40px_rgba(0,0,0,0.02)]">
+            <div className="p-5 bg-white border-t border-slate-200 w-full z-10 relative shadow-[0_-10px_40px_rgba(0,0,0,0.02)]">
                 <div className="relative group">
                     <input
                         value={input}
                         onChange={e => setInput(e.target.value)}
                         onKeyDown={e => e.key === 'Enter' && sendMessage()}
                         placeholder="Type a message or say 'book appointment'..."
-                        className="w-full bg-gray-50 border border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 rounded-full pl-6 pr-14 py-4 text-[15px] font-medium text-gray-800 placeholder-gray-400 outline-none transition-all duration-300 shadow-inner group-hover:bg-gray-50/80"
+                        className="w-full bg-gray-50 border border-slate-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 rounded-full pl-6 pr-14 py-4 text-[15px] font-medium text-gray-800 placeholder-gray-400 outline-none transition-all duration-300 shadow-inner group-hover:bg-gray-50/80"
                     />
                     <button
                         onClick={sendMessage}

@@ -24,6 +24,7 @@ interface GrantedRecord {
         specialist: string;
         urgency: string;
         created_at: string;
+        improvement_plan?: string[];
     };
 }
 
@@ -104,13 +105,7 @@ export default function DoctorDashboard() {
         if (!address) return;
         setIsRegistering(true);
         try {
-            // 1. Register on Blockchain FIRST (The "Trust" Layer)
-            // Role 2 = Doctor
-            console.log("Registering on blockchain...");
             const tx = await registerUser(2);
-            console.log("Blockchain tx sent:", tx.hash);
-
-            // 2. If Blockchain succeeds, save profile to Database (The "UI" Layer)
             await insforge.database
                 .from('doctor_profiles')
                 .insert([{
@@ -122,7 +117,6 @@ export default function DoctorDashboard() {
 
             await loadProfile();
             setIsRegistered(true);
-            // Switch to profile tab so they can fill in details
             setActiveTab('profile');
         } catch (err: any) {
             console.error('Registration failed:', err);
@@ -147,9 +141,8 @@ export default function DoctorDashboard() {
 
     const saveProfile = async () => {
         if (!address) return;
-
         if (!isRegistered) {
-            alert("Please click 'Register as Doctor' at the top of the page first!");
+            alert("Please click 'Complete Profile' at the top of the page first!");
             return;
         }
 
@@ -252,11 +245,10 @@ export default function DoctorDashboard() {
         }
     };
 
-    // Handle Google Calendar Callback
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const code = params.get('code');
-        const state = params.get('state'); // wallet address returned by Google
+        const state = params.get('state');
 
         if (code && state) {
             handleCalendarCallback(code, state);
@@ -264,9 +256,7 @@ export default function DoctorDashboard() {
     }, []);
 
     const handleCalendarCallback = async (code: string, wallet: string) => {
-        // Optimistically clear URL to avoid re-triggering
         window.history.replaceState({}, '', '/doctor');
-
         try {
             const res = await fetch(`${process.env.NEXT_PUBLIC_INSFORGE_BASE_URL}/functions/v1/calendar-callback`, {
                 method: 'POST',
@@ -276,11 +266,8 @@ export default function DoctorDashboard() {
                 },
                 body: JSON.stringify({ code, wallet })
             });
-
             if (!res.ok) throw new Error('Failed to exchange code');
-
             await loadProfile();
-            // Optional: Success toast
         } catch (err) {
             console.error('Calendar callback error:', err);
         }
@@ -293,7 +280,6 @@ export default function DoctorDashboard() {
                 .update({ status, updated_at: new Date().toISOString() })
                 .eq('id', appointmentId);
 
-            // If confirming, try to create a Google Calendar event
             if (status === 'confirmed' && profile?.google_calendar_connected) {
                 const apt = appointments.find(a => a.id === appointmentId);
                 if (apt) {
@@ -322,29 +308,35 @@ export default function DoctorDashboard() {
                     }
                 }
             }
-
             await loadAppointments();
         } catch (err) {
             console.error('Failed to update appointment:', err);
         }
     };
 
-
-    // When a patient record is selected, load consultation notes
     useEffect(() => {
         if (selectedGrant) loadConsultNotes(selectedGrant.patient_wallet);
     }, [selectedGrant]);
 
     if (!isConnected) {
         return (
-            <div className="min-h-screen pt-24 pb-12 px-6">
-                <div className="max-w-md mx-auto text-center">
-                    <div className="glass-card p-10 space-y-5">
-                        <div className="w-20 h-20 rounded-full bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center mx-auto text-4xl">🩺</div>
-                        <h2 className="text-2xl font-bold text-black">Doctor Dashboard</h2>
-                        <p className="text-sm text-gray-600">Connect your wallet to access your dashboard, view patient records, and manage appointments.</p>
-                        <button onClick={connect} disabled={isConnecting} className="btn-primary !py-3 !px-8 w-full">
-                            {isConnecting ? 'Connecting...' : '🦊 Connect MetaMask'}
+            <div className="min-h-screen pt-24 pb-12 px-6 font-sans bg-[#FAFAFA]">
+                <div className="max-w-md mx-auto text-center mt-12">
+                    <div className="bg-white rounded-3xl p-10 shadow-sm border border-slate-200 flex flex-col items-center">
+                        <div className="w-20 h-20 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mb-6 border border-blue-100">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
+                        </div>
+                        <h2 className="text-3xl font-semibold text-gray-900 tracking-tight mb-3">Healthcare Portal</h2>
+                        <p className="text-sm text-gray-500 font-medium mb-8">Access patient records securely via blockchain, manage cross-facility appointments, and write clinical notes.</p>
+                        <button onClick={connect} disabled={isConnecting} className="w-full bg-blue-600 text-white rounded-xl px-6 py-3.5 font-semibold hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50 flex items-center justify-center gap-2">
+                            {isConnecting ? (
+                                <>
+                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                    Connecting...
+                                </>
+                            ) : (
+                                <>Connect Wallet</>
+                            )}
                         </button>
                     </div>
                 </div>
@@ -353,17 +345,17 @@ export default function DoctorDashboard() {
     }
 
     const urgencyColors: Record<string, string> = {
-        low: 'bg-green-500/10 text-green-700 border-green-500/20',
-        medium: 'bg-yellow-500/10 text-yellow-700 border-yellow-500/20',
-        high: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
-        critical: 'bg-red-500/10 text-red-700 border-red-500/20',
+        low: 'bg-green-50 text-green-700 border-green-200',
+        medium: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+        high: 'bg-orange-50 text-orange-700 border-orange-200',
+        critical: 'bg-red-50 text-red-700 border-red-200',
     };
 
     const statusColors: Record<string, string> = {
-        pending: 'bg-yellow-500/10 text-yellow-700 border-yellow-500/20',
-        confirmed: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-        completed: 'bg-green-500/10 text-green-700 border-green-500/20',
-        cancelled: 'bg-red-500/10 text-red-700 border-red-500/20',
+        pending: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+        confirmed: 'bg-blue-50 text-blue-700 border-blue-200',
+        completed: 'bg-gray-50 text-gray-700 border-slate-300',
+        cancelled: 'bg-red-50 text-red-700 border-red-200',
     };
 
     const pendingAppointments = appointments.filter(a => a.status === 'pending');
@@ -371,124 +363,120 @@ export default function DoctorDashboard() {
     const todayAppointments = appointments.filter(a => a.date === todayStr && a.status !== 'cancelled');
 
     return (
-        <div className="min-h-screen pt-24 pb-12 px-6 relative">
-            {/* Grid Background */}
-            <div className="fixed inset-0 z-[-1] opacity-30 pointer-events-none">
-                <Image
-                    src="https://cdn.prod.website-files.com/68c8e57d6e512b9573db146f/68e7b2dcdd75a7584b6cc8fa_newsletter%20grid.svg"
-                    alt="Grid Background"
-                    fill
-                    className="object-cover"
-                />
-            </div>
-            <div className="max-w-7xl mx-auto">
+        <div className="min-h-screen pt-24 pb-12 px-6 relative bg-[#FAFAFA]">
+            {/* Subtle background decoration */}
+            <div className="absolute top-0 left-0 right-0 h-96 bg-gradient-to-b from-blue-50/50 to-transparent pointer-events-none z-0"></div>
+
+            <div className="max-w-7xl mx-auto relative z-10">
                 {/* Header */}
-                <div className="flex items-center justify-between mb-8">
+                <div className="flex flex-col md:flex-row md:items-center justify-between mb-12 gap-6">
                     <div>
-                        <h1 className="text-2xl font-bold text-black">
-                            {profile ? `Dr. ${profile.name}` : 'Doctor Dashboard'}
+                        <h1 className="text-4xl font-semibold text-gray-900 tracking-tight mb-2">
+                            {profile?.name ? `Dr. ${profile.name.replace('Dr. ', '')}` : 'Clinical'} <span className="text-blue-600">Dashboard</span>
                         </h1>
-                        <p className="text-sm text-gray-500 mt-1">
-                            {profile?.specialty || 'Manage patients, appointments, and records'}
+                        <p className="text-base text-gray-500 font-medium">
+                            {profile?.specialty || 'Manage your patients, appointments, and medical records'}
                         </p>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-4">
                         {!isRegistered && signer && (
-                            <button onClick={handleRegister} disabled={isRegistering} className="btn-primary text-sm">
-                                {isRegistering ? 'Registering...' : 'Register as Doctor'}
+                            <button onClick={handleRegister} disabled={isRegistering} className="px-5 py-2.5 rounded-xl bg-gray-100 text-gray-700 font-medium hover:bg-gray-200 transition-colors text-sm">
+                                {isRegistering ? 'Registering...' : 'Complete Profile'}
                             </button>
                         )}
                     </div>
                 </div>
 
                 {/* Quick Stats */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-8">
                     {[
-                        { label: 'Total Patients', value: grants.length, icon: '👥' },
-                        { label: "Today's Appointments", value: todayAppointments.length, icon: '📅' },
-                        { label: 'Pending Requests', value: pendingAppointments.length, icon: '⏳' },
-                        { label: 'Notes Written', value: consultNotes.length, icon: '📝' },
+                        { label: 'Active Patients', value: grants.length, icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-600"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg> },
+                        { label: "Today's Appts", value: todayAppointments.length, icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-600"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg> },
+                        { label: 'Requires Action', value: pendingAppointments.length, icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg> },
+                        { label: 'Clinical Notes', value: consultNotes.length, icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-600"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg> },
                     ].map((stat, i) => (
-                        <div key={i} className="glass-card p-4">
-                            <div className="flex items-center gap-3">
-                                <span className="text-2xl">{stat.icon}</span>
-                                <div>
-                                    <p className="text-xl font-bold text-black">{stat.value}</p>
-                                    <p className="text-[10px] text-gray-500 uppercase tracking-wider">{stat.label}</p>
-                                </div>
+                        <div key={i} className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex items-center gap-4">
+                            <div className={`p-3 rounded-xl flex items-center justify-center shrink-0 ${i === 0 ? 'bg-blue-50' : i === 1 ? 'bg-indigo-50' : i === 2 ? 'bg-amber-50' : 'bg-emerald-50'
+                                }`}>
+                                {stat.icon}
+                            </div>
+                            <div>
+                                <p className="text-2xl font-bold text-gray-900 tracking-tight leading-none">{stat.value}</p>
+                                <p className="text-xs text-gray-500 font-medium mt-1 uppercase tracking-wide">{stat.label}</p>
                             </div>
                         </div>
                     ))}
                 </div>
 
                 {/* Tab bar */}
-                <div className="flex gap-1 bg-gray-900/50 p-1 rounded-xl mb-6">
+                <div className="flex gap-2 overflow-x-auto pb-6 border-b border-slate-300 mb-8">
                     {(['patients', 'appointments', 'profile'] as const).map(tab => (
                         <button
                             key={tab}
                             onClick={() => setActiveTab(tab)}
-                            className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === tab
-                                ? 'bg-indigo-500/20 text-indigo-700 border border-indigo-500/30'
-                                : 'text-gray-500 hover:text-gray-800'
+                            className={`px-5 py-2.5 rounded-full text-sm font-semibold transition-all shrink-0 ${activeTab === tab
+                                ? 'bg-blue-600 text-white shadow-sm'
+                                : 'bg-white text-gray-500 hover:text-gray-900 border border-slate-300'
                                 }`}
                         >
-                            {tab === 'patients' ? '👥 Patient Records' : tab === 'appointments' ? '📅 Appointments' : '⚙️ Profile'}
+                            {tab === 'patients' ? 'Patient Records' : tab === 'appointments' ? 'Schedule & Appts' : 'Provider Profile'}
                         </button>
                     ))}
                 </div>
 
                 {/* ==================== PATIENTS TAB ==================== */}
                 {activeTab === 'patients' && (
-                    <div className="grid lg:grid-cols-12 gap-8 items-start">
+                    <div className="grid lg:grid-cols-[1fr_2.5fr] gap-8 items-start">
                         {/* Records list (Sidebar) */}
-                        <div className="lg:col-span-4 flex flex-col gap-4">
-                            <div className="flex items-center justify-between">
-                                <h2 className="text-lg font-bold text-black flex items-center gap-2">
-                                    <span>📂</span> Patient Records
-                                </h2>
-                                <span className="bg-black text-white text-xs font-bold px-2 py-0.5">{grants.length}</span>
+                        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm flex flex-col h-[650px] overflow-hidden">
+                            <div className="bg-gray-50/80 border-b border-slate-200 px-5 py-4 flex items-center justify-between shrink-0">
+                                <h3 className="font-semibold text-gray-900 text-sm tracking-wide">Shared Records</h3>
+                                <div className="text-xs font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">{grants.length}</div>
                             </div>
 
-                            <div className="space-y-0 border-2 border-black bg-white max-h-[700px] overflow-y-auto custom-scrollbar shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
+                            <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
                                 {isLoading ? (
-                                    <div className="p-8 text-center border-2 border-dashed border-gray-300 rounded-xl">
-                                        <div className="animate-spin h-6 w-6 border-2 border-black border-t-transparent rounded-full mx-auto mb-2"></div>
-                                        <p className="text-xs font-bold text-gray-500 uppercase">Loading...</p>
+                                    <div className="h-full flex flex-col items-center justify-center text-center p-6 opacity-60">
+                                        <div className="animate-spin h-6 w-6 border-2 border-blue-600 border-t-transparent rounded-full mb-3"></div>
+                                        <p className="text-sm font-medium text-gray-500">Decrypting records...</p>
                                     </div>
                                 ) : grants.length === 0 ? (
-                                    <div className="p-8 text-center border-2 border-dashed border-gray-300 rounded-xl">
-                                        <p className="text-sm font-bold text-gray-500">No records yet.</p>
-                                        <p className="text-xs text-gray-400 mt-1">Wait for patients to grant access.</p>
+                                    <div className="h-full flex flex-col items-center justify-center text-center p-6 opacity-60">
+                                        <div className="w-12 h-12 rounded-full bg-gray-50 border border-slate-300 flex items-center justify-center mb-3">
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+                                        </div>
+                                        <p className="text-sm font-medium text-gray-900 mb-1">No patient records</p>
+                                        <p className="text-xs text-gray-500">Patients need to grant you access first.</p>
                                     </div>
                                 ) : (
                                     grants.map(g => (
                                         <div
                                             key={g.id}
                                             onClick={() => setSelectedGrant(g)}
-                                            className={`p-3 cursor-pointer transition-all border-b-2 last:border-b-0 relative group ${selectedGrant?.id === g.id
-                                                ? 'bg-black text-white border-black shadow-[inset_4px_0px_0px_0px_rgba(255,255,255,1)]'
-                                                : 'bg-white border-black text-black hover:bg-gray-50'
+                                            className={`group relative cursor-pointer p-4 rounded-2xl transition-all border ${selectedGrant?.id === g.id
+                                                ? 'bg-blue-50 border-blue-200'
+                                                : 'bg-white border-transparent hover:border-slate-300 hover:bg-gray-50'
                                                 }`}
                                         >
-                                            <div className="flex justify-between items-start mb-1">
-                                                <h3 className={`font-bold truncate pr-2 ${selectedGrant?.id === g.id ? 'text-white' : 'text-black'}`}>
-                                                    {g.analysis?.file_name || 'Medical Record'}
+                                            <div className="flex justify-between items-start gap-2 mb-1.5">
+                                                <h3 className={`font-semibold text-sm truncate pr-2 ${selectedGrant?.id === g.id ? 'text-blue-900' : 'text-gray-900'}`}>
+                                                    {g.analysis?.file_name.replace(/\.[^/.]+$/, "") || 'Medical Document'}
                                                 </h3>
                                                 {g.analysis && (
-                                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 border ${selectedGrant?.id === g.id ? 'border-white text-white' : 'border-black text-black'
+                                                    <span className={`shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded border ${selectedGrant?.id === g.id ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-gray-100 text-gray-600 border-slate-300'
                                                         }`}>
-                                                        {g.analysis.risk_score}
+                                                        RS: {g.analysis.risk_score}
                                                     </span>
                                                 )}
                                             </div>
-                                            <p className={`text-[10px] font-mono mb-2 ${selectedGrant?.id === g.id ? 'text-gray-300' : 'text-gray-500'}`}>
-                                                {g.patient_wallet?.slice(0, 6)}...{g.patient_wallet?.slice(-4)}
-                                            </p>
-                                            <div className="flex items-center justify-between">
-                                                <span className={`text-[10px] uppercase tracking-wider ${selectedGrant?.id === g.id ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                    {new Date(g.granted_at).toLocaleDateString()}
-                                                </span>
-                                                {selectedGrant?.id === g.id && <span className="text-xs">👉</span>}
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div>
+                                                <p className="text-[11px] font-mono text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded border border-slate-200">
+                                                    {g.patient_wallet?.slice(0, 6)}...{g.patient_wallet?.slice(-4)}
+                                                </p>
+                                            </div>
+                                            <div className="flex items-center justify-between text-[10px] text-gray-500 font-medium">
+                                                <span>Granted {new Date(g.granted_at).toLocaleDateString()}</span>
                                             </div>
                                         </div>
                                     ))
@@ -497,185 +485,203 @@ export default function DoctorDashboard() {
                         </div>
 
                         {/* Detail panel */}
-                        <div className="lg:col-span-8">
+                        <div className="h-full">
                             {selectedGrant?.analysis ? (
-                                <div className="space-y-6 animate-fadeIn">
-                                    {/* Main Analysis Card */}
-                                    <div className="bg-white rounded-3xl p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 relative overflow-hidden">
-                                        <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-indigo-50 to-cyan-50 rounded-full blur-3xl -mr-20 -mt-20 opacity-50 pointer-events-none"></div>
-                                        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
+                                <div className="space-y-6 animate-fade-in">
+                                    {/* Main Analysis Header Card */}
+                                    <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-200">
+                                        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
                                             <div className="flex-1">
-                                                <div className="flex items-center gap-3 mb-2">
-                                                    <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">
+                                                <div className="flex items-center gap-3 mb-3">
+                                                    <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">
                                                         {selectedGrant.analysis.file_name}
                                                     </h1>
-                                                    <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${selectedGrant.analysis.urgency === 'critical' ? 'bg-red-50 text-red-600 border border-red-200' :
-                                                        selectedGrant.analysis.urgency === 'high' ? 'bg-orange-50 text-orange-600 border border-orange-200' :
-                                                            selectedGrant.analysis.urgency === 'medium' ? 'bg-yellow-50 text-yellow-600 border border-yellow-200' :
-                                                                'bg-green-50 text-green-600 border border-green-200'
+                                                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${selectedGrant.analysis.urgency === 'critical' ? 'bg-red-50 text-red-600 border-red-200' :
+                                                        selectedGrant.analysis.urgency === 'high' ? 'bg-orange-50 text-orange-600 border-orange-200' :
+                                                            selectedGrant.analysis.urgency === 'medium' ? 'bg-yellow-50 text-yellow-600 border-yellow-200' :
+                                                                'bg-green-50 text-green-600 border-green-200'
                                                         }`}>
-                                                        {selectedGrant.analysis.urgency} Priority
+                                                        {selectedGrant.analysis.urgency}
                                                     </span>
                                                 </div>
-                                                <div className="flex items-center gap-4 text-sm font-medium text-gray-500 mb-2">
+                                                <div className="flex items-center gap-4 text-xs font-medium text-gray-500">
                                                     <span className="flex items-center gap-1.5">
                                                         <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                                                         </svg>
-                                                        Patient: <span className="font-mono text-xs bg-gray-100 px-2 py-1 rounded-md text-gray-600">{selectedGrant.patient_wallet.slice(0, 8)}...{selectedGrant.patient_wallet.slice(-4)}</span>
+                                                        Patient Wallet: <span className="font-mono bg-gray-50 border border-slate-200 px-1.5 py-0.5 rounded text-gray-600">{selectedGrant.patient_wallet.slice(0, 8)}...{selectedGrant.patient_wallet.slice(-4)}</span>
                                                     </span>
-                                                    <span>•</span>
-                                                    <span>📅 {new Date(selectedGrant.analysis.created_at).toLocaleDateString()}</span>
+                                                    <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
+                                                    <span>Uploaded {new Date(selectedGrant.analysis.created_at).toLocaleDateString()}</span>
                                                 </div>
                                             </div>
 
-                                            <div className="flex bg-gray-50/50 rounded-2xl p-6 border border-gray-100 items-center gap-6 min-w-[200px] justify-center shadow-inner">
-                                                <div className="text-center">
-                                                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Risk Score</p>
-                                                    <div className="flex items-baseline justify-center gap-1">
-                                                        <span className="text-5xl font-black text-gray-900 tracking-tighter">{selectedGrant.analysis.risk_score}</span>
+                                            <div className="flex bg-gray-50/50 rounded-2xl p-4 border border-slate-200 items-center gap-4 min-w-[200px]">
+                                                <div>
+                                                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-0.5">Risk Score</p>
+                                                    <div className="flex items-baseline gap-1">
+                                                        <span className="text-4xl font-bold text-gray-900 tracking-tight">{selectedGrant.analysis.risk_score}</span>
                                                         <span className="text-sm font-medium text-gray-400">/ 100</span>
                                                     </div>
                                                 </div>
                                                 <div className="hidden sm:block">
-                                                    <RiskScore score={selectedGrant.analysis.risk_score} size="md" />
+                                                    <RiskScore score={selectedGrant.analysis.risk_score} size="xs" />
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
 
-                                    {/* Content Body */}
-                                    <div className="grid lg:grid-cols-3 gap-8">
+                                    {/* Content Body Grid */}
+                                    <div className="grid lg:grid-cols-3 gap-6">
                                         {/* Left Col: Summary & Specs */}
-                                        <div className="lg:col-span-2 space-y-8">
+                                        <div className="lg:col-span-2 space-y-6">
                                             {/* Summary */}
-                                            <div className="bg-white rounded-3xl p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 transition-all hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]">
-                                                <div className="flex items-center gap-3 mb-6">
-                                                    <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-500">
-                                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                                        </svg>
+                                            <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-200">
+                                                <div className="flex items-center gap-3 mb-5">
+                                                    <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
+                                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                                                     </div>
-                                                    <h3 className="text-lg font-bold text-gray-900">AI Exec Summary</h3>
+                                                    <h3 className="text-lg font-semibold text-gray-900">AI Executive Summary</h3>
                                                 </div>
-                                                <p className="text-base text-gray-600 leading-relaxed font-medium">
+                                                <p className="text-sm text-gray-600 leading-relaxed font-medium">
                                                     {selectedGrant.analysis.summary}
                                                 </p>
                                             </div>
 
                                             <div className="grid grid-cols-2 gap-4">
-                                                <div className="bg-gradient-to-br from-blue-50 to-indigo-50/30 rounded-2xl p-6 border border-blue-100/50 relative overflow-hidden group">
-                                                    <div className="absolute -right-4 -bottom-4 opacity-10 transform group-hover:scale-110 group-hover:-rotate-12 transition-all duration-500">
-                                                        <span className="text-8xl">👨‍⚕️</span>
+                                                <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex items-start gap-4">
+                                                    <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
                                                     </div>
-                                                    <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-2 relative z-10">Recommended Specialist</p>
-                                                    <p className="text-xl font-bold text-gray-900 relative z-10">
-                                                        {selectedGrant.analysis.specialist}
-                                                    </p>
+                                                    <div>
+                                                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 mt-1">Specialist Ref</p>
+                                                        <p className="text-base font-semibold text-gray-900">
+                                                            {selectedGrant.analysis.specialist}
+                                                        </p>
+                                                    </div>
                                                 </div>
 
-                                                <div className="bg-gradient-to-br from-purple-50 to-fuchsia-50/30 rounded-2xl p-6 border border-purple-100/50 relative overflow-hidden group">
-                                                    <div className="absolute -right-4 -bottom-4 opacity-10 transform group-hover:scale-110 group-hover:rotate-12 transition-all duration-500">
-                                                        <span className="text-8xl">🔬</span>
+                                                <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex items-start gap-4">
+                                                    <div className="w-10 h-10 rounded-full bg-teal-50 text-teal-600 flex items-center justify-center shrink-0">
+                                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg>
                                                     </div>
-                                                    <p className="text-[10px] font-bold text-purple-600 uppercase tracking-wider mb-2 relative z-10">Detected Conditions</p>
-                                                    <p className="text-4xl font-black text-gray-900 relative z-10">
-                                                        {selectedGrant.analysis.conditions?.length || 0}
-                                                    </p>
+                                                    <div>
+                                                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 mt-1">Conditions</p>
+                                                        <p className="text-xl font-bold text-gray-900 leading-none mt-1">
+                                                            {selectedGrant.analysis.conditions?.length || 0}
+                                                        </p>
+                                                    </div>
                                                 </div>
+                                            </div>
+
+                                            {/* Improvement Plan (Conditional or Fallback) */}
+                                            <div className="bg-gradient-to-br from-green-50 to-emerald-50/50 rounded-3xl p-6 shadow-sm border border-green-100 mt-6">
+                                                <div className="flex items-center justify-between mb-4">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-600">
+                                                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                                                            </svg>
+                                                        </div>
+                                                        <h3 className="text-sm font-semibold text-gray-900 tracking-wide">Health Recommendations</h3>
+                                                    </div>
+                                                    <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase">Action Plan</span>
+                                                </div>
+                                                <ul className="space-y-3">
+                                                    {selectedGrant.analysis.improvement_plan && selectedGrant.analysis.improvement_plan.length > 0 ? (
+                                                        selectedGrant.analysis.improvement_plan.map((step, idx) => (
+                                                            <li key={idx} className="flex items-start gap-3">
+                                                                <div className="flex-shrink-0 w-5 h-5 rounded-full bg-green-200 text-green-700 flex items-center justify-center text-[10px] font-bold mt-0.5">{idx + 1}</div>
+                                                                <span className="text-sm text-gray-700 font-medium leading-relaxed">{step}</span>
+                                                            </li>
+                                                        ))
+                                                    ) : (
+                                                        <li className="flex items-start gap-3">
+                                                            <div className="flex-shrink-0 w-5 h-5 rounded-full bg-green-200 text-green-700 flex items-center justify-center text-[10px] font-bold mt-0.5">1</div>
+                                                            <span className="text-sm text-gray-700 font-medium leading-relaxed">Please consult a healthcare professional for a tailored improvement plan based on this analysis.</span>
+                                                        </li>
+                                                    )}
+                                                </ul>
                                             </div>
                                         </div>
 
                                         {/* Right Col: Conditions List */}
-                                        <div className="lg:col-span-1">
-                                            <div className="bg-white rounded-3xl p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 h-full">
-                                                <div className="flex items-center justify-between mb-6">
-                                                    <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Conditions</h3>
-                                                    <span className="bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-lg text-xs font-bold">{selectedGrant.analysis.conditions?.length || 0}</span>
-                                                </div>
+                                        <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 flex flex-col">
+                                            <div className="flex items-center justify-between mb-5">
+                                                <h3 className="text-sm font-semibold text-gray-900 tracking-wide">Indicators</h3>
+                                                <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-md text-xs font-semibold border border-slate-300">
+                                                    {selectedGrant.analysis.conditions?.length || 0}
+                                                </span>
+                                            </div>
 
-                                                <div className="flex flex-col gap-3">
-                                                    {selectedGrant.analysis.conditions?.map((c, i) => (
-                                                        <div key={i} className="group flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 border border-transparent hover:border-gray-100 transition-all cursor-default">
-                                                            <div className="w-2 h-2 rounded-full bg-indigo-500 group-hover:scale-150 transition-transform"></div>
-                                                            <span className="text-sm font-semibold text-gray-700">{c}</span>
-                                                        </div>
-                                                    ))}
-                                                    {(!selectedGrant.analysis.conditions || selectedGrant.analysis.conditions.length === 0) && (
-                                                        <div className="text-center py-8">
-                                                            <p className="text-sm text-gray-400 font-medium italic">No specific conditions detected.</p>
-                                                        </div>
-                                                    )}
-                                                </div>
+                                            <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-2">
+                                                {selectedGrant.analysis.conditions?.map((c, i) => (
+                                                    <div key={i} className="flex items-start gap-3 p-3 bg-gray-50 border border-slate-200 rounded-xl">
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 shrink-0"></div>
+                                                        <span className="text-sm font-medium text-gray-800 leading-snug">{c}</span>
+                                                    </div>
+                                                ))}
+                                                {(!selectedGrant.analysis.conditions || selectedGrant.analysis.conditions.length === 0) && (
+                                                    <div className="text-center py-10 opacity-60">
+                                                        <p className="text-sm text-gray-500 font-medium">No conditions isolated.</p>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
 
                                     {/* Consultation Notes Section */}
-                                    <div className="bg-gradient-to-b from-yellow-50/50 to-white rounded-3xl p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-yellow-100/50 mt-8 relative overflow-hidden">
-                                        <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-400/10 rounded-full blur-2xl -mr-10 -mt-10"></div>
-
-                                        <div className="flex items-center justify-between mb-8 relative z-10">
+                                    <div className="bg-white p-8 border border-slate-200 rounded-3xl shadow-sm mt-8">
+                                        <div className="flex items-center justify-between mb-6 pb-6 border-b border-slate-200">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 rounded-xl bg-yellow-100 flex items-center justify-center text-yellow-600">
-                                                    <span className="text-lg">📝</span>
+                                                <div className="w-10 h-10 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600">
+                                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                                                 </div>
-                                                <h3 className="text-lg font-bold text-gray-900 tracking-tight">
-                                                    Doctor's Clinical Notes
-                                                </h3>
+                                                <div>
+                                                    <h3 className="text-lg font-semibold text-gray-900 tracking-tight">Clinical Observations</h3>
+                                                    <p className="text-xs text-gray-500">Add secure, private notes to this patient record</p>
+                                                </div>
                                             </div>
-                                            <span className="text-[10px] bg-yellow-100 border border-yellow-200 px-3 py-1 rounded-full text-yellow-800 font-bold uppercase tracking-widest hidden sm:inline-block shadow-sm">
-                                                Private & Encrypted
-                                            </span>
+                                            <div className="hidden sm:flex items-center gap-1.5 text-xs text-green-700 bg-green-50 px-2.5 py-1 rounded-md border border-green-200 font-medium">
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                                                Encrypted Note
+                                            </div>
                                         </div>
 
-                                        <div className="flex flex-col sm:flex-row gap-4 mb-8 relative z-10">
+                                        <div className="flex flex-col sm:flex-row gap-4 mb-8">
                                             <textarea
                                                 value={consultNote}
                                                 onChange={e => setConsultNote(e.target.value)}
-                                                placeholder="Write your clinical observations or treatment plan here..."
-                                                rows={2}
-                                                className="flex-1 bg-white border border-gray-200 rounded-2xl p-4 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400/50 transition-all shadow-sm resize-none"
+                                                placeholder="Document your clinical findings, next steps, or medication adjustments..."
+                                                rows={3}
+                                                className="flex-1 bg-gray-50 border border-slate-300 rounded-xl p-4 text-sm text-gray-800 placeholder-gray-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none"
                                             />
                                             <button
                                                 onClick={saveConsultNote}
                                                 disabled={isSavingNote || !consultNote.trim()}
-                                                className="px-8 py-4 self-end sm:self-stretch rounded-2xl font-bold uppercase tracking-wider text-xs bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 min-w-[140px]"
+                                                className="px-6 py-4 self-end sm:self-stretch font-semibold text-sm rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm flex items-center justify-center gap-2 min-w-[140px]"
                                             >
-                                                {isSavingNote ? (
-                                                    <span className="flex items-center gap-2">
-                                                        <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                                        </svg>
-                                                        Saving
-                                                    </span>
-                                                ) : (
-                                                    <><span>Save Note</span> <span className="text-sm">→</span></>
-                                                )}
+                                                {isSavingNote ? 'Saving...' : 'Save Record'}
                                             </button>
                                         </div>
 
-                                        <div className="space-y-4 relative z-10">
+                                        <div className="space-y-3">
                                             {consultNotes.length === 0 ? (
-                                                <div className="flex flex-col items-center justify-center py-10 text-gray-400 border-2 border-dashed border-gray-200 rounded-2xl bg-gray-50/50">
-                                                    <svg className="w-8 h-8 mb-3 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                                    </svg>
-                                                    <p className="text-sm font-medium">No clinical notes added yet.</p>
+                                                <div className="flex flex-col items-center justify-center py-6 text-gray-400 bg-gray-50 rounded-xl border border-slate-200">
+                                                    <p className="text-sm font-medium">No clinical notes recorded yet.</p>
                                                 </div>
                                             ) : (
                                                 consultNotes.map(n => (
-                                                    <div key={n.id} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 flex flex-col sm:flex-row gap-5 hover:shadow-md transition-shadow">
-                                                        <div className="sm:w-32 shrink-0">
-                                                            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-gray-50 inline-block px-2 py-1 rounded-md mb-1">
-                                                                {new Date(n.created_at).toLocaleDateString()}
+                                                    <div key={n.id} className="bg-gray-50 p-5 rounded-xl border border-slate-200 flex flex-col sm:flex-row gap-5">
+                                                        <div className="sm:w-32 shrink-0 sm:border-r border-slate-300 pr-4">
+                                                            <div className="text-xs font-semibold text-gray-700 mb-0.5">
+                                                                {new Date(n.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                                                             </div>
-                                                            <div className="text-[10px] font-mono text-gray-400 pl-1">
+                                                            <div className="text-[10px] font-medium text-gray-500">
                                                                 {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                             </div>
                                                         </div>
-                                                        <p className="text-sm text-gray-700 font-medium leading-relaxed bg-gray-50/50 p-4 rounded-xl border border-gray-100 flex-1">
+                                                        <p className="text-sm text-gray-700 font-medium leading-relaxed flex-1 whitespace-pre-wrap">
                                                             {n.note}
                                                         </p>
                                                     </div>
@@ -685,13 +691,18 @@ export default function DoctorDashboard() {
                                     </div>
                                 </div>
                             ) : (
-                                <div className="h-full min-h-[400px] flex items-center justify-center border-2 border-dashed border-gray-300 rounded-xl bg-gray-50/50">
-                                    <div className="text-center">
-                                        <div className="w-16 h-16 bg-white border-2 border-black rounded-full flex items-center justify-center mx-auto mb-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
-                                            <span className="text-2xl">👈</span>
+                                <div className="bg-white rounded-3xl h-full min-h-[500px] flex items-center justify-center border border-slate-200 shadow-sm p-6 text-center">
+                                    <div>
+                                        <div className="w-20 h-20 bg-gray-50 rounded-full border border-slate-200 flex items-center justify-center mx-auto mb-5">
+                                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-300">
+                                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                                <line x1="16" y1="13" x2="8" y2="13"></line>
+                                                <line x1="16" y1="17" x2="8" y2="17"></line>
+                                                <polyline points="10 9 9 9 8 9"></polyline>
+                                            </svg>
                                         </div>
-                                        <h3 className="text-lg font-black text-black mb-1">Select a Patient Record</h3>
-                                        <p className="text-sm text-gray-500">Choose a file from the sidebar to view detailed analysis.</p>
+                                        <h3 className="text-xl font-semibold text-gray-900 mb-2">No Record Selected</h3>
+                                        <p className="text-sm font-medium text-gray-500 max-w-[250px] mx-auto">Select a patient file from the sidebar to view their AI analysis and history.</p>
                                     </div>
                                 </div>
                             )}
@@ -701,37 +712,44 @@ export default function DoctorDashboard() {
 
                 {/* ==================== APPOINTMENTS TAB ==================== */}
                 {activeTab === 'appointments' && (
-                    <div className="space-y-6">
+                    <div className="space-y-8 animate-fade-in max-w-5xl">
                         {/* Pending appointments */}
                         {pendingAppointments.length > 0 && (
                             <div>
-                                <h2 className="text-sm font-semibold text-yellow-700 uppercase tracking-wider mb-3">⏳ Pending Approval</h2>
+                                <h2 className="text-sm font-semibold text-gray-900 tracking-wide mb-4">Pending Approval Requests</h2>
                                 <div className="grid md:grid-cols-2 gap-4">
                                     {pendingAppointments.map(apt => (
-                                        <div key={apt.id} className="glass-card p-5 border-yellow-500/20">
-                                            <div className="flex items-start justify-between mb-3">
+                                        <div key={apt.id} className="bg-white rounded-2xl p-5 border border-yellow-200 shadow-sm relative overflow-hidden">
+                                            <div className="absolute top-0 left-0 w-1.5 h-full bg-yellow-400"></div>
+                                            <div className="flex items-start justify-between mb-4 pl-2">
                                                 <div>
-                                                    <p className="text-sm font-medium text-black">
-                                                        📅 {new Date(apt.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                                                    <p className="text-base font-semibold text-gray-900 leading-tight">
+                                                        {new Date(apt.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
                                                     </p>
-                                                    <p className="text-xs text-gray-600">🕐 {apt.time}</p>
-                                                    <p className="text-[10px] text-gray-500 font-mono mt-1">Patient: {apt.patient_wallet?.slice(0, 8)}...{apt.patient_wallet?.slice(-6)}</p>
+                                                    <p className="text-sm font-medium text-gray-500 mt-0.5">{apt.time}</p>
                                                 </div>
-                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium border ${statusColors.pending}`}>PENDING</span>
+                                                <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold border ${statusColors.pending}`}>NEEDS REVIEW</span>
                                             </div>
-                                            {apt.reason && <p className="text-xs text-gray-600 mb-3">Reason: {apt.reason}</p>}
-                                            <div className="flex gap-2">
+
+                                            <div className="pl-2 mb-4">
+                                                <div className="text-xs bg-gray-50 border border-slate-200 rounded-lg p-3">
+                                                    <p className="text-gray-500 font-medium mb-1 truncate"><span className="text-gray-400">Patient:</span> {apt.patient_wallet}</p>
+                                                    {apt.reason && <p className="text-gray-700 font-medium"><span className="text-gray-400">Reason:</span> {apt.reason}</p>}
+                                                </div>
+                                            </div>
+
+                                            <div className="flex gap-2 pl-2 border-t border-slate-200 pt-4">
                                                 <button
                                                     onClick={() => updateAppointmentStatus(apt.id, 'confirmed')}
-                                                    className="flex-1 px-3 py-2 rounded-lg bg-green-500/10 border border-green-500/20 text-green-700 text-xs font-medium hover:bg-green-500/20 transition-all"
+                                                    className="flex-1 px-3 py-2.5 rounded-xl bg-blue-600 border border-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
                                                 >
-                                                    ✓ Confirm
+                                                    Confirm Booking
                                                 </button>
                                                 <button
                                                     onClick={() => updateAppointmentStatus(apt.id, 'cancelled')}
-                                                    className="flex-1 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-700 text-xs font-medium hover:bg-red-500/20 transition-all"
+                                                    className="flex-1 px-3 py-2.5 rounded-xl bg-gray-50 border border-slate-300 text-gray-600 text-sm font-medium hover:bg-red-50 hover:border-red-200 hover:text-red-700 transition-colors"
                                                 >
-                                                    ✕ Decline
+                                                    Decline
                                                 </button>
                                             </div>
                                         </div>
@@ -742,46 +760,60 @@ export default function DoctorDashboard() {
 
                         {/* All appointments */}
                         <div>
-                            <h2 className="text-sm font-semibold text-gray-600 uppercase tracking-wider mb-3">All Appointments</h2>
+                            <div className="flex items-center justify-between mb-4">
+                                <h2 className="text-sm font-semibold text-gray-900 tracking-wide">Scheduled Schedule</h2>
+                                <div className="text-xs font-semibold text-gray-500 bg-white border border-slate-300 px-3 py-1 rounded-full">{appointments.length} total</div>
+                            </div>
+
                             {appointments.length === 0 ? (
-                                <div className="glass-card p-12 text-center">
-                                    <div className="w-16 h-16 rounded-full bg-indigo-500/10 flex items-center justify-center mx-auto mb-3">
-                                        <span className="text-2xl">📅</span>
+                                <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 shadow-sm">
+                                    <div className="w-16 h-16 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center mx-auto mb-4 border border-blue-100">
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
                                     </div>
-                                    <p className="text-sm text-gray-500">No appointments yet.</p>
-                                    <p className="text-xs text-gray-600 mt-1">Patients can book appointments with you from their dashboard.</p>
+                                    <p className="text-base font-semibold text-gray-900 mb-1">Your schedule is clear</p>
+                                    <p className="text-sm text-gray-500">Patients will appear here once they request a booking.</p>
                                 </div>
                             ) : (
                                 <div className="grid gap-3">
                                     {appointments.map(apt => (
-                                        <div key={apt.id} className="glass-card p-4 flex items-center justify-between">
+                                        <div key={apt.id} className="bg-white rounded-2xl p-5 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm hover:shadow-md transition-all">
                                             <div className="flex items-center gap-4">
-                                                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500/20 to-cyan-500/20 flex items-center justify-center text-lg">
-                                                    📅
+                                                <div className="w-12 h-12 rounded-full bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center text-sm font-bold shrink-0">
+                                                    {apt.time.split(':')[0]}<span className="text-[10px] font-medium ml-0.5 opacity-70">HH</span>
                                                 </div>
                                                 <div>
-                                                    <p className="text-sm font-medium text-black">
-                                                        {new Date(apt.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} at {apt.time}
+                                                    <p className="text-sm font-semibold text-gray-900">
+                                                        {new Date(apt.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} • {apt.time}
                                                     </p>
-                                                    <p className="text-[10px] text-gray-500 font-mono">Patient: {apt.patient_wallet?.slice(0, 8)}...{apt.patient_wallet?.slice(-6)}</p>
-                                                    {apt.reason && <p className="text-xs text-gray-500 mt-0.5">{apt.reason}</p>}
+                                                    <div className="flex items-center gap-2 mt-0.5">
+                                                        <span className="text-xs font-mono text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded border border-slate-200">
+                                                            {apt.patient_wallet?.slice(0, 6)}...
+                                                        </span>
+                                                        {apt.reason && <span className="text-xs font-medium text-gray-500 truncate max-w-[200px] border-l border-slate-300 pl-2">
+                                                            {apt.reason}
+                                                        </span>}
+                                                    </div>
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-3">
-                                                {apt.meeting_link && (
-                                                    <a href={apt.meeting_link} target="_blank" rel="noreferrer" className="text-xs text-cyan-400 hover:text-cyan-300">
-                                                        🔗 Meet Link
-                                                    </a>
-                                                )}
-                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium border ${statusColors[apt.status] || statusColors.pending}`}>
-                                                    {apt.status.toUpperCase()}
-                                                </span>
+                                            <div className="flex items-center sm:flex-col sm:items-end flex-wrap gap-2 pt-3 border-t sm:border-0 sm:pt-0 border-slate-200">
+                                                <div className="flex items-center gap-2 mb-1 w-full sm:w-auto justify-between sm:justify-end">
+                                                    {apt.meeting_link && (
+                                                        <a href={apt.meeting_link} target="_blank" rel="noreferrer" className="text-[11px] font-semibold bg-blue-50 text-blue-600 border border-blue-100 px-3 py-1 rounded-full hover:bg-blue-100 transition-colors flex items-center gap-1.5">
+                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+                                                            Meet
+                                                        </a>
+                                                    )}
+                                                    <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold border ${statusColors[apt.status] || statusColors.pending}`}>
+                                                        {apt.status.toUpperCase()}
+                                                    </span>
+                                                </div>
+
                                                 {apt.status === 'confirmed' && (
                                                     <button
                                                         onClick={() => updateAppointmentStatus(apt.id, 'completed')}
-                                                        className="px-3 py-1.5 rounded-lg bg-green-500/10 border border-green-500/20 text-green-700 text-[10px] font-medium hover:bg-green-500/20 transition-all"
+                                                        className="text-xs font-medium text-green-700 hover:text-green-800 transition-colors bg-green-50 px-3 py-1.5 rounded-lg border border-transparent hover:border-green-200 w-full sm:w-auto text-center"
                                                     >
-                                                        Complete
+                                                        Mark Completed
                                                     </button>
                                                 )}
                                             </div>
@@ -795,33 +827,36 @@ export default function DoctorDashboard() {
 
                 {/* ==================== PROFILE TAB ==================== */}
                 {activeTab === 'profile' && (
-                    <div className="max-w-2xl mx-auto">
-                        <div className="glass-card p-8 space-y-6">
-                            <div className="text-center">
-                                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-cyan-500/20 to-indigo-500/20 flex items-center justify-center mx-auto mb-4 text-3xl">
-                                    🩺
+                    <div className="max-w-2xl mx-auto animate-fade-in">
+                        <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-sm">
+                            <div className="flex items-center gap-4 mb-8">
+                                <div className="w-16 h-16 rounded-full bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center text-2xl shrink-0">
+                                    👨‍⚕️
                                 </div>
-                                <h2 className="text-xl font-bold text-black">Doctor Profile</h2>
-                                <p className="text-xs text-gray-500 mt-1">This information is visible to patients when booking appointments.</p>
+                                <div>
+                                    <h2 className="text-xl font-semibold text-gray-900">Provider Settings</h2>
+                                    <p className="text-sm text-gray-500 font-medium">This information is visible to patients when booking appointments.</p>
+                                </div>
                             </div>
 
-                            <div className="space-y-4">
+                            <div className="space-y-5">
                                 <div>
-                                    <label className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1 block">Full Name</label>
+                                    <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Full Professional Name</label>
                                     <input
                                         type="text"
                                         value={profileForm.name}
                                         onChange={e => setProfileForm(p => ({ ...p, name: e.target.value }))}
                                         placeholder="Dr. John Smith"
-                                        className="w-full bg-white border-2 border-black rounded-xl px-4 py-3 text-sm text-black placeholder-gray-600 focus:outline-none focus:border-indigo-500/50"
+                                        className="w-full bg-gray-50 border border-slate-300 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm"
                                     />
                                 </div>
                                 <div>
-                                    <label className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1 block">Specialty</label>
+                                    <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Primary Specialty</label>
                                     <select
                                         value={profileForm.specialty}
                                         onChange={e => setProfileForm(p => ({ ...p, specialty: e.target.value }))}
-                                        className="w-full bg-white border-2 border-black rounded-xl px-4 py-3 text-sm text-black focus:outline-none focus:border-indigo-500/50"
+                                        className="w-full bg-gray-50 border border-slate-300 rounded-xl px-4 py-3 text-sm text-gray-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm appearance-none"
+                                        style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem center', backgroundSize: '1.2em' }}
                                     >
                                         <option value="General Practice">General Practice</option>
                                         <option value="Cardiology">Cardiology</option>
@@ -838,44 +873,51 @@ export default function DoctorDashboard() {
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1 block">Bio / About</label>
+                                    <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Professional Bio</label>
                                     <textarea
                                         value={profileForm.bio}
                                         onChange={e => setProfileForm(p => ({ ...p, bio: e.target.value }))}
-                                        placeholder="Brief description about your practice and experience..."
+                                        placeholder="Brief description about your practice philosophy, experience, and background..."
                                         rows={4}
-                                        className="w-full bg-white border-2 border-black rounded-xl px-4 py-3 text-sm text-black placeholder-gray-600 focus:outline-none focus:border-indigo-500/50 resize-none"
+                                        className="w-full bg-gray-50 border border-slate-300 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm resize-none"
                                     />
                                 </div>
-                                <div className="bg-gray-100 border-2 border-black rounded-xl p-4">
-                                    <h4 className="text-xs font-semibold text-gray-600 uppercase mb-1">Wallet Address</h4>
-                                    <p className="text-xs text-gray-500 font-mono break-all">{address}</p>
+                                <div className="bg-gray-50 border border-slate-300 rounded-xl p-4 flex items-center justify-between">
+                                    <div>
+                                        <h4 className="text-xs font-semibold text-gray-700 mb-0.5">Connected Wallet</h4>
+                                        <p className="text-xs text-gray-500 font-mono break-all">{address}</p>
+                                    </div>
+                                    <div className="shrink-0 w-8 h-8 rounded-full bg-white border border-slate-300 flex items-center justify-center shadow-sm ml-4">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                                    </div>
                                 </div>
                             </div>
 
-                            <button
-                                onClick={saveProfile}
-                                disabled={isSavingProfile || !profileForm.name}
-                                className="btn-primary w-full !py-3"
-                            >
-                                {isSavingProfile ? 'Saving...' : profile ? 'Update Profile' : 'Create Profile'}
-                            </button>
+                            <div className="mt-8 pt-6 border-t border-slate-200">
+                                <button
+                                    onClick={saveProfile}
+                                    disabled={isSavingProfile || !profileForm.name}
+                                    className="w-full bg-blue-600 text-white rounded-xl py-3.5 font-semibold text-sm hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50 flex items-center justify-center"
+                                >
+                                    {isSavingProfile ? 'Saving Changes...' : profile ? 'Save Profile Settings' : 'Create Profile'}
+                                </button>
+                            </div>
 
                             {/* Google Calendar Connection */}
-                            <div className="mt-6 bg-gray-100 border-2 border-black rounded-xl p-5">
+                            <div className="mt-6 bg-white border border-slate-300 rounded-2xl p-5 shadow-sm">
                                 <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500/20 to-green-500/20 flex items-center justify-center text-lg">
-                                            📆
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shrink-0">
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
                                         </div>
                                         <div>
-                                            <h4 className="text-sm font-medium text-black">Google Calendar</h4>
-                                            <p className="text-[10px] text-gray-500">Auto-create events with Google Meet links when confirming appointments.</p>
+                                            <h4 className="text-sm font-semibold text-gray-900 mb-0.5">Google Calendar Sync</h4>
+                                            <p className="text-xs text-gray-500 font-medium leading-relaxed max-w-sm">Automatically generate Google Meet links when confirming patient appointments.</p>
                                         </div>
                                     </div>
                                     {profile?.google_calendar_connected ? (
-                                        <span className="px-3 py-1.5 rounded-lg bg-green-500/10 border border-green-500/20 text-green-700 text-xs font-medium">
-                                            ✓ Connected
+                                        <span className="px-3 py-1.5 rounded-lg bg-green-50 text-green-700 border border-green-200 text-xs font-semibold shrink-0">
+                                            ✓ Synced
                                         </span>
                                     ) : (
                                         <button
@@ -888,9 +930,9 @@ export default function DoctorDashboard() {
                                                     console.error('Failed to start calendar auth:', err);
                                                 }
                                             }}
-                                            className="px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-medium hover:bg-blue-500/20 transition-all"
+                                            className="px-4 py-2 rounded-xl bg-white border border-slate-300 text-gray-700 text-xs font-semibold hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm shrink-0"
                                         >
-                                            Connect
+                                            Connect Calendar
                                         </button>
                                     )}
                                 </div>
@@ -899,8 +941,33 @@ export default function DoctorDashboard() {
                     </div>
                 )}
 
-                <MedicalDisclaimer />
+                <div className="mt-8">
+                    <MedicalDisclaimer />
+                </div>
             </div>
+
+            <style jsx>{`
+                .custom-scrollbar::-webkit-scrollbar {
+                    width: 6px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-track {
+                    background: transparent;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb {
+                    background-color: #E5E7EB;
+                    border-radius: 20px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+                    background-color: #D1D5DB;
+                }
+                @keyframes fadeIn {
+                    from { opacity: 0; transform: translateY(5px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+                .animate-fade-in {
+                    animation: fadeIn 0.3s ease-out forwards;
+                }
+            `}</style>
         </div>
     );
 }

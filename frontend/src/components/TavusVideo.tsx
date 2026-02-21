@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { CVIProvider } from './cvi/components/cvi-provider';
 import { Conversation } from './cvi/components/conversation';
 
@@ -17,6 +17,32 @@ export default function TavusVideo({ summary, riskScore, conditions, specialist,
     const [status, setStatus] = useState<'idle' | 'connecting' | 'active' | 'error'>('idle');
     const [errorMsg, setErrorMsg] = useState('');
     const [isFullscreen, setIsFullscreen] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleFullscreenChange = () => {
+            setIsFullscreen(!!document.fullscreenElement);
+        };
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+        return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    }, []);
+
+    const toggleFullscreen = async () => {
+        if (!document.fullscreenElement) {
+            try {
+                if (containerRef.current?.requestFullscreen) {
+                    await containerRef.current.requestFullscreen();
+                }
+            } catch (err: any) {
+                console.error("Error attempting to enable fullscreen:", err);
+            }
+        } else {
+            if (document.exitFullscreen) {
+                await document.exitFullscreen();
+            }
+        }
+    };
+
 
     const createConversation = async () => {
         setStatus('connecting');
@@ -81,9 +107,9 @@ Do NOT diagnose. You are not replacing a doctor.`;
     // Idle state
     if (status === 'idle') {
         return (
-            <div className="relative flex flex-col h-full bg-white/60 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/80 overflow-hidden text-slate-800 transition-all duration-300">
+            <div className="relative flex flex-col h-full bg-white/60 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-200 overflow-hidden text-slate-800 transition-all duration-300">
                 <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 via-purple-500/5 to-pink-500/5 pointer-events-none"></div>
-                <div className="flex items-center justify-between px-6 py-4 border-b border-white/50 bg-white/40">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-white/40">
                     <div className="flex items-center gap-2">
                         <div className="w-3 h-3 rounded-full bg-slate-300"></div>
                         <div className="w-3 h-3 rounded-full bg-slate-300"></div>
@@ -114,9 +140,9 @@ Do NOT diagnose. You are not replacing a doctor.`;
     // Connecting state
     if (status === 'connecting') {
         return (
-            <div className="relative flex flex-col h-full bg-white/60 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/80 overflow-hidden text-slate-800 transition-all duration-300">
+            <div className="relative flex flex-col h-full bg-white/60 backdrop-blur-2xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-200 overflow-hidden text-slate-800 transition-all duration-300">
                 <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 via-purple-500/5 to-pink-500/5 pointer-events-none"></div>
-                <div className="flex items-center justify-between px-6 py-4 border-b border-white/50 bg-white/40">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-white/40">
                     <div className="flex items-center gap-2">
                         <div className="w-3 h-3 rounded-full bg-slate-300"></div>
                         <div className="w-3 h-3 rounded-full bg-slate-300"></div>
@@ -181,15 +207,15 @@ Do NOT diagnose. You are not replacing a doctor.`;
     // Active conversation
     return (
         <CVIProvider>
-            <div className={`flex flex-col bg-slate-950 ring-1 ring-white/10 transition-all duration-300 ${isFullscreen
-                    ? 'fixed inset-0 z-[100] rounded-none'
-                    : 'relative h-full rounded-3xl shadow-2xl overflow-hidden'
+            <div ref={containerRef} className={`flex flex-col bg-slate-950 ring-1 ring-slate-800 transition-all duration-300 ${isFullscreen
+                ? 'w-full h-full rounded-none'
+                : 'relative h-full rounded-3xl shadow-2xl overflow-hidden'
                 }`}>
                 <div className="absolute inset-0 bg-gradient-to-b from-indigo-500/10 to-transparent pointer-events-none z-0"></div>
 
                 {/* Header Overlay */}
                 <div className="absolute top-0 left-0 right-0 p-6 z-20 flex justify-between items-start pointer-events-none">
-                    <div className="flex items-center gap-3 backdrop-blur-md bg-black/40 border border-white/10 px-4 py-2.5 rounded-full pointer-events-auto shadow-lg shadow-black/20">
+                    <div className="flex items-center gap-3 backdrop-blur-md bg-black/40 border border-slate-700 px-4 py-2.5 rounded-full pointer-events-auto shadow-lg shadow-black/20">
                         <div className="relative flex h-3 w-3">
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                             <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
@@ -212,7 +238,7 @@ Do NOT diagnose. You are not replacing a doctor.`;
 
                 {/* Floating Controls Overlay */}
                 <div className="absolute bottom-6 left-0 right-0 z-20 flex justify-center px-6 pointer-events-none">
-                    <div className="flex items-center justify-between w-full backdrop-blur-xl bg-slate-900/80 border border-white/10 p-4 rounded-2xl shadow-2xl pointer-events-auto relative overflow-hidden">
+                    <div className="flex items-center justify-between w-full backdrop-blur-xl bg-slate-900/80 border border-slate-700 p-4 rounded-2xl shadow-2xl pointer-events-auto relative overflow-hidden">
                         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent pointer-events-none"></div>
                         <div className="flex items-center gap-4 relative">
                             <div className="w-12 h-12 rounded-full bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30">
@@ -225,8 +251,8 @@ Do NOT diagnose. You are not replacing a doctor.`;
                         </div>
                         <div className="flex items-center gap-3">
                             <button
-                                onClick={() => setIsFullscreen(!isFullscreen)}
-                                className="bg-slate-800 hover:bg-slate-700 text-white p-3.5 rounded-xl transition-all shadow-lg flex items-center justify-center group border border-white/10 hover:scale-105 active:scale-95"
+                                onClick={toggleFullscreen}
+                                className="bg-slate-800 hover:bg-slate-700 text-white p-3.5 rounded-xl transition-all shadow-lg flex items-center justify-center group border border-slate-700 hover:scale-105 active:scale-95"
                                 aria-label={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
                             >
                                 {isFullscreen ? (

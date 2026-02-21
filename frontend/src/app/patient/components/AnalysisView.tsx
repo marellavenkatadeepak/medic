@@ -20,6 +20,7 @@ interface Analysis {
     ipfs_cid?: string;
     encryption_key?: string;
     encryption_iv?: string;
+    improvement_plan?: string[];
 }
 
 interface AnalysisViewProps {
@@ -51,7 +52,7 @@ export default function AnalysisView({ record }: AnalysisViewProps) {
     return (
         <div className="space-y-4 animate-fadeIn">
             {/* Header Section */}
-            <div className="bg-white rounded-3xl p-5 shadow-[0_4px_20px_rgb(0,0,0,0.04)] border border-gray-100 relative overflow-hidden">
+            <div className="bg-white rounded-3xl p-5 shadow-[0_4px_20px_rgb(0,0,0,0.04)] border border-slate-200 relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-48 h-48 bg-gradient-to-br from-indigo-50 to-cyan-50 rounded-full blur-3xl -mr-16 -mt-16 opacity-50 pointer-events-none"></div>
                 <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative z-10">
                     <div className="flex-1">
@@ -79,7 +80,7 @@ export default function AnalysisView({ record }: AnalysisViewProps) {
                         </button>
                     </div>
 
-                    <div className="flex bg-gray-50/50 rounded-2xl p-4 border border-gray-100 items-center gap-4 min-w-[180px] justify-center shadow-inner">
+                    <div className="flex bg-gray-50/50 rounded-2xl p-4 border border-slate-200 items-center gap-4 min-w-[180px] justify-center shadow-inner">
                         <div className="text-center">
                             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Risk Score</p>
                             <div className="flex items-baseline justify-center gap-1">
@@ -99,7 +100,7 @@ export default function AnalysisView({ record }: AnalysisViewProps) {
                 {/* Left Col: Exec Summary & Key Info */}
                 <div className="lg:col-span-2 space-y-4">
                     {/* Summary */}
-                    <div className="bg-white rounded-3xl p-5 shadow-[0_4px_20px_rgb(0,0,0,0.04)] border border-gray-100 transition-all hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]">
+                    <div className="bg-white rounded-3xl p-5 shadow-[0_4px_20px_rgb(0,0,0,0.04)] border border-slate-200 transition-all hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]">
                         <div className="flex items-center gap-2.5 mb-3">
                             <div className="w-8 h-8 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-500">
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -111,6 +112,36 @@ export default function AnalysisView({ record }: AnalysisViewProps) {
                         <p className="text-sm text-gray-600 leading-relaxed font-medium">
                             {record.summary}
                         </p>
+                    </div>
+
+                    {/* Improvement Plan (Conditional or Fallback for old records) */}
+                    <div className="bg-gradient-to-br from-green-50 to-emerald-50/50 rounded-3xl p-5 shadow-[0_4px_20px_rgb(0,0,0,0.04)] border border-green-100 transition-all hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)]">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-xl bg-green-100 flex items-center justify-center text-green-600">
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                                    </svg>
+                                </div>
+                                <h3 className="text-base font-bold text-gray-900">Health Recommendations</h3>
+                            </div>
+                            <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase">Action Plan</span>
+                        </div>
+                        <ul className="space-y-3">
+                            {record.improvement_plan && record.improvement_plan.length > 0 ? (
+                                record.improvement_plan.map((step, idx) => (
+                                    <li key={idx} className="flex items-start gap-3">
+                                        <div className="flex-shrink-0 w-5 h-5 rounded-full bg-green-200 text-green-700 flex items-center justify-center text-[10px] font-bold mt-0.5">{idx + 1}</div>
+                                        <span className="text-sm text-gray-700 font-medium leading-relaxed">{step}</span>
+                                    </li>
+                                ))
+                            ) : (
+                                <li className="flex items-start gap-3">
+                                    <div className="flex-shrink-0 w-5 h-5 rounded-full bg-green-200 text-green-700 flex items-center justify-center text-[10px] font-bold mt-0.5">1</div>
+                                    <span className="text-sm text-gray-700 font-medium leading-relaxed">Please consult a healthcare professional for a tailored improvement plan based on this analysis.</span>
+                                </li>
+                            )}
+                        </ul>
                     </div>
 
                     {/* Meta Specs */}
@@ -131,7 +162,7 @@ export default function AnalysisView({ record }: AnalysisViewProps) {
                         </div>
 
                         {record.record_hash && (
-                            <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 flex flex-col justify-between">
+                            <div className="bg-gray-50 rounded-2xl p-4 border border-slate-200 flex flex-col justify-between">
                                 <div>
                                     <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
                                         <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -140,11 +171,11 @@ export default function AnalysisView({ record }: AnalysisViewProps) {
                                         Blockchain Verification
                                     </p>
                                     <div className="space-y-2 mt-3">
-                                        <div className="bg-white p-2.5 rounded-xl border border-gray-100">
+                                        <div className="bg-white p-2.5 rounded-xl border border-slate-200">
                                             <p className="text-[9px] text-gray-400 font-bold tracking-widest mb-1 uppercase">Hash</p>
                                             <p className="text-[11px] font-mono text-gray-600 truncate" title={record.record_hash}>{record.record_hash}</p>
                                         </div>
-                                        <div className="bg-white p-2.5 rounded-xl border border-gray-100">
+                                        <div className="bg-white p-2.5 rounded-xl border border-slate-200">
                                             <p className="text-[9px] text-gray-400 font-bold tracking-widest mb-1 uppercase">Transaction</p>
                                             <p className="text-[11px] font-mono text-emerald-600 truncate" title={record.tx_hash}>{record.tx_hash || 'PENDING'}</p>
                                         </div>
@@ -157,7 +188,7 @@ export default function AnalysisView({ record }: AnalysisViewProps) {
 
                 {/* Right Col: Conditions & Secret */}
                 <div className="lg:col-span-1 space-y-4">
-                    <div className="bg-white rounded-3xl p-5 shadow-[0_4px_20px_rgb(0,0,0,0.04)] border border-gray-100">
+                    <div className="bg-white rounded-3xl p-5 shadow-[0_4px_20px_rgb(0,0,0,0.04)] border border-slate-200">
                         <div className="flex items-center justify-between mb-4">
                             <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider">Detected Conditions</h3>
                             <span className="bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-lg text-[10px] font-bold">{record.conditions?.length || 0}</span>
@@ -165,7 +196,7 @@ export default function AnalysisView({ record }: AnalysisViewProps) {
 
                         <div className="flex flex-col gap-2">
                             {record.conditions?.map((c, i) => (
-                                <div key={i} className="group flex items-center gap-2.5 p-2.5 rounded-xl hover:bg-gray-50 border border-transparent hover:border-gray-100 transition-all cursor-default">
+                                <div key={i} className="group flex items-center gap-2.5 p-2.5 rounded-xl hover:bg-gray-50 border border-transparent hover:border-slate-200 transition-all cursor-default">
                                     <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 group-hover:scale-[1.5] transition-transform"></div>
                                     <span className="text-xs font-semibold text-gray-700">{c}</span>
                                 </div>
@@ -207,7 +238,7 @@ export default function AnalysisView({ record }: AnalysisViewProps) {
                                     navigator.clipboard.writeText(record.encryption_key!);
                                     alert('Key copied to clipboard!');
                                 }}
-                                className="relative z-10 w-full bg-white/5 hover:bg-white/10 text-white text-xs font-semibold py-2.5 rounded-xl transition-all border border-white/10 hover:border-white/20 flex items-center justify-center gap-2"
+                                className="relative z-10 w-full bg-white/5 hover:bg-white/10 text-white text-xs font-semibold py-2.5 rounded-xl transition-all border border-slate-600 hover:border-slate-500 flex items-center justify-center gap-2"
                             >
                                 <span>Copy Key</span>
                                 <svg className="w-3 h-3 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
