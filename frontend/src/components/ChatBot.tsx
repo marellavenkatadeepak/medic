@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { insforge } from '@/lib/insforge';
 
+
 interface Message {
     id: string;
     role: 'user' | 'assistant';
@@ -14,6 +15,79 @@ interface Message {
 
 interface ChatBotProps {
     patientWallet: string;
+}
+
+// Lightweight markdown renderer – no external dependency
+function renderMarkdown(text: string) {
+    const lines = text.split('\n');
+    const elements: React.ReactNode[] = [];
+    let listItems: React.ReactNode[] = [];
+    let listType: 'ul' | 'ol' | null = null;
+
+    const flushList = () => {
+        if (listItems.length > 0) {
+            if (listType === 'ul') elements.push(<ul key={elements.length} className="list-disc pl-5 mb-2 space-y-0.5">{listItems}</ul>);
+            else elements.push(<ol key={elements.length} className="list-decimal pl-5 mb-2 space-y-0.5">{listItems}</ol>);
+            listItems = [];
+            listType = null;
+        }
+    };
+
+    const parseInline = (str: string, key: number | string): React.ReactNode => {
+        const parts: React.ReactNode[] = [];
+        let remaining = str;
+        let i = 0;
+        while (remaining.length > 0) {
+            const boldMatch = remaining.match(/^(.*?)\*\*(.+?)\*\*/);
+            const italicMatch = remaining.match(/^(.*?)\*(.+?)\*/);
+            if (boldMatch && (!italicMatch || boldMatch[0].length <= italicMatch[0].length)) {
+                if (boldMatch[1]) parts.push(<span key={i++}>{boldMatch[1]}</span>);
+                parts.push(<strong key={i++} className="font-bold text-gray-900">{boldMatch[2]}</strong>);
+                remaining = remaining.slice(boldMatch[0].length);
+            } else if (italicMatch) {
+                if (italicMatch[1]) parts.push(<span key={i++}>{italicMatch[1]}</span>);
+                parts.push(<em key={i++} className="italic">{italicMatch[2]}</em>);
+                remaining = remaining.slice(italicMatch[0].length);
+            } else {
+                parts.push(<span key={i++}>{remaining}</span>);
+                break;
+            }
+        }
+        return <>{parts}</>;
+    };
+
+    lines.forEach((line, idx) => {
+        const ulMatch = line.match(/^[\*\-]\s+(.+)/);
+        const olMatch = line.match(/^\d+\.\s+(.+)/);
+        const h1Match = line.match(/^#\s+(.+)/);
+        const h2Match = line.match(/^##\s+(.+)/);
+        const h3Match = line.match(/^###\s+(.+)/);
+
+        if (ulMatch) {
+            if (listType !== 'ul') flushList();
+            listType = 'ul';
+            listItems.push(<li key={idx}>{parseInline(ulMatch[1], idx)}</li>);
+        } else if (olMatch) {
+            if (listType !== 'ol') flushList();
+            listType = 'ol';
+            listItems.push(<li key={idx}>{parseInline(olMatch[1], idx)}</li>);
+        } else {
+            flushList();
+            if (h1Match) {
+                elements.push(<h3 key={idx} className="font-bold text-gray-900 text-base mb-1 mt-2">{parseInline(h1Match[1], idx)}</h3>);
+            } else if (h2Match) {
+                elements.push(<h4 key={idx} className="font-semibold text-gray-900 text-sm mb-1 mt-2">{parseInline(h2Match[1], idx)}</h4>);
+            } else if (h3Match) {
+                elements.push(<h5 key={idx} className="font-semibold text-gray-900 text-sm mb-0.5 mt-1">{parseInline(h3Match[1], idx)}</h5>);
+            } else if (line.trim() === '') {
+                // skip blank lines but they implicitly separate paragraphs
+            } else {
+                elements.push(<p key={idx} className="mb-1.5 last:mb-0">{parseInline(line, idx)}</p>);
+            }
+        }
+    });
+    flushList();
+    return <>{elements}</>;
 }
 
 export default function ChatBot({ patientWallet }: ChatBotProps) {
@@ -284,7 +358,9 @@ export default function ChatBot({ patientWallet }: ChatBotProps) {
 
                             {msg.role === 'assistant' ? (
                                 <div className="space-y-4">
-                                    <p className="text-sm leading-relaxed font-medium">{msg.content}</p>
+                                    <div className="text-sm leading-relaxed text-gray-800">
+                                        {renderMarkdown(msg.content)}
+                                    </div>
 
                                     {msg.warning && (
                                         <div className="flex items-start gap-3 p-3.5 bg-rose-50 border border-rose-100 rounded-2xl relative overflow-hidden">
