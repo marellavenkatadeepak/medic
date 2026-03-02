@@ -6,7 +6,16 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useWallet } from '@/hooks/useWallet';
 import { useContract } from '@/hooks/useContract';
-import { insforge } from '@/lib/insforge';
+import {
+    getPatientRecords,
+    deleteRecord as apiDeleteRecord,
+    updateRecord,
+    checkRecordCache,
+    cloneRecord,
+    getAppointments,
+    cancelAppointment as apiCancelAppointment,
+    analyzeReport,
+} from '@/lib/api';
 import FileUpload from '@/components/FileUpload';
 import RecordCard from '@/components/RecordCard';
 import RiskScore from '@/components/RiskScore';
@@ -95,49 +104,48 @@ export default function PatientDashboard() {
 
     const loadRecords = async () => {
         if (!address) return;
-        const { data } = await insforge.database
-            .from('analyses')
-            .select()
-            .eq('patient_wallet', address)
-            .order('created_at', { ascending: false });
-        if (data) {
-            setRecords(data as Analysis[]);
-            if (data.length > 0 && !selectedRecord) setSelectedRecord(data[0] as Analysis);
+        try {
+            const { records: data } = await getPatientRecords(address);
+            if (data) {
+                setRecords(data as Analysis[]);
+                if (data.length > 0 && !selectedRecord) setSelectedRecord(data[0] as Analysis);
+            }
+        } catch (err) {
+            console.error('Failed to load records:', err);
         }
     };
 
     const loadAppointments = async () => {
         if (!address) return;
         try {
-            const { data: appts } = await insforge.database
-                .from('appointments')
-                .select()
-                .eq('patient_wallet', address)
-                .order('date', { ascending: true });
-
-            if (appts && appts.length > 0) {
-                // Fetch doctor profiles for names
-                const doctorWallets = [...new Set(appts.map((a: any) => a.doctor_wallet))];
-                const { data: profiles } = await insforge.database
-                    .from('doctor_profiles')
-                    .select()
-                    .in('wallet_address', doctorWallets);
-
-                const profileMap: Record<string, any> = {};
-                if (profiles) profiles.forEach((p: any) => { profileMap[p.wallet_address] = p; });
-
-                const enriched = appts.map((a: any) => ({
-                    ...a,
-                    doctor_name: profileMap[a.doctor_wallet]?.name || null,
-                    doctor_specialty: profileMap[a.doctor_wallet]?.specialty || null,
-                }));
-                setAppointments(enriched);
-            } else if (appts) {
-                setAppointments(appts as Appointment[]);
-            }
+            const { appointments } = await getAppointments(address);
+            setAppointments(appointments as Appointment[]);
         } catch (err) {
             console.error('Failed to load appointments:', err);
         }
+    };
+
+    /**
+     * Fast regex-based PII redaction — no ML model needed.
+     * Scrubs common PII patterns from medical text.
+     */
+    const redactPII = (text: string): string => {
+        let redacted = text;
+        // SSN patterns (xxx-xx-xxxx, xxx xx xxxx)
+        redacted = redacted.replace(/\b\d{3}[-\s]?\d{2}[-\s]?\d{4}\b/g, '[REDACTED-SSN]');
+        // Phone numbers
+        redacted = redacted.replace(/(\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g, '[REDACTED-PHONE]');
+        // Email addresses
+        redacted = redacted.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '[REDACTED-EMAIL]');
+        // Dates of birth patterns (DOB: ..., Date of Birth: ..., Born: ...)
+        redacted = redacted.replace(/(DOB|Date of Birth|Born)\s*[:\-]?\s*\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/gi, '$1: [REDACTED-DOB]');
+        // Named fields (Patient Name:, Name:, Patient:)
+        redacted = redacted.replace(/(Patient\s*Name|Patient|Name)\s*[:\-]\s*[A-Z][a-zA-Z]+(\s+[A-Z][a-zA-Z]+){0,3}/g, '$1: [REDACTED-NAME]');
+        // MRN / Medical Record Numbers
+        redacted = redacted.replace(/(MRN|Medical Record Number|Record\s*#?)\s*[:\-]?\s*[A-Z0-9-]{4,}/gi, '$1: [REDACTED-MRN]');
+        // Addresses (simple: number + street name patterns)
+        redacted = redacted.replace(/\b\d{1,5}\s+[A-Z][a-zA-Z]+\s+(Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Lane|Ln|Boulevard|Blvd|Way|Court|Ct)\.?\b/gi, '[REDACTED-ADDRESS]');
+        return redacted;
     };
 
     const handleFileUpload = async (file: File) => {
@@ -145,174 +153,146 @@ export default function PatientDashboard() {
         setIsUploading(true);
 
         try {
-            // Check for identical file name for cached clone
-            setUploadStatus('🔐 Encrypting file...');
-            const { data: previousRecord } = await insforge.database
-                .from('analyses')
-                .select('*')
-                .eq('patient_wallet', address)
-                .eq('file_name', file.name)
-                .order('created_at', { ascending: false })
-                .limit(1)
-                .single();
-
-            if (previousRecord) {
-                // Simulate processing time (10 seconds total)
-                await new Promise(resolve => setTimeout(resolve, 3000));
-                setUploadStatus('🌐 Uploading to IPFS...');
-                await new Promise(resolve => setTimeout(resolve, 3000));
-                setUploadStatus('🤖 Analyzing with AI...');
-                await new Promise(resolve => setTimeout(resolve, 4000));
-
-                const { id, created_at, tx_hash, record_id, record_hash, ...recordPayload } = previousRecord;
-
-                // Clone the row but act like it's brand new
-                const { data: newDbRecord, error: dbError } = await insforge.database
-                    .from('analyses')
-                    .insert([{ ...recordPayload, record_hash: record_hash }])
-                    .select();
-
-                if (!dbError && newDbRecord && newDbRecord[0]) {
-                    setUploadStatus('⛓️ Recording on blockchain...');
-                    try {
-                        const { tx, recordId } = await storeRecord(record_hash, newDbRecord[0].id);
-                        await insforge.database
-                            .from('analyses')
-                            .update({
-                                tx_hash: tx.hash,
-                                ...(recordId !== undefined && { record_id: recordId })
-                            })
-                            .eq('id', newDbRecord[0].id);
-                    } catch (blockchainErr) {
-                        console.warn('Blockchain storage skipped:', blockchainErr);
-                    }
-                }
-
-                setUploadStatus('');
-                if (recordPayload.encryption_key) {
-                    alert(`✅ File encrypted & uploaded to IPFS!\n\n🔑 Your Encryption Key (save this!):\n${recordPayload.encryption_key}`);
-                }
-
-                await loadRecords();
-                setRefreshTrigger(prev => prev + 1);
-                setActiveTab('twin');
-                setIsUploading(false);
-                return;
-            }
-
             let fileKey: string = '';
             let encryptionKeyForUser: string | null = null;
+            let redactedBase64File: string = '';
 
+            // 1. EXTRACT AND REDACT TEXT LOCALLY
+            let fileTypeForBackend = 'text/plain';
+            try {
+                setUploadStatus('📄 Extracting text locally (OCR)...');
+                const { extractTextFromFile } = await import('@/lib/localPrivacy');
+                const extractedText = await extractTextFromFile(file);
+
+                if (!extractedText || extractedText.trim().length === 0) {
+                    throw new Error('No text could be extracted from this file');
+                }
+
+                setUploadStatus('🛡️ Redacting sensitive info (Local AI)...');
+                const redactedText = await new Promise<string>((resolve, reject) => {
+                    const worker = new Worker(new URL('@/workers/privacyWorker', import.meta.url));
+                    worker.postMessage({ action: 'REDACT', text: extractedText });
+
+                    worker.onmessage = (e) => {
+                        const { status, redactedText, error } = e.data;
+                        if (status === 'complete') {
+                            resolve(redactedText);
+                            worker.terminate();
+                        } else if (status === 'error') {
+                            reject(new Error(error));
+                            worker.terminate();
+                        } else if (status === 'progress') {
+                            // Optional: could update a progress bar here
+                        }
+                    };
+                    worker.onerror = (err) => {
+                        reject(err);
+                        worker.terminate();
+                    };
+                });
+
+                // Convert redacted text to base64 to send to backend
+                redactedBase64File = btoa(unescape(encodeURIComponent(redactedText)));
+                fileTypeForBackend = 'text/plain';
+            } catch (localProcessingError) {
+                console.warn("Local privacy processing failed, sending raw file to Gemini:", localProcessingError);
+                // Fallback: send the raw file as base64 — Gemini can read PDFs/images natively
+                const buffer = await file.arrayBuffer();
+                const bytes = new Uint8Array(buffer);
+                let binary = '';
+                for (let i = 0; i < bytes.length; i++) {
+                    binary += String.fromCharCode(bytes[i]);
+                }
+                redactedBase64File = btoa(binary);
+                fileTypeForBackend = file.type || 'application/pdf';
+            }
+
+            // Safety guard: never send an empty file_base64
+            if (!redactedBase64File) {
+                throw new Error('Failed to process file for upload. The file may be empty or corrupted.');
+            }
+
+            // 2. ENCRYPT ORIGINAL AND UPLOAD TO IPFS
             if (isIPFSConfigured()) {
-                setUploadStatus('🔐 Encrypting file...');
+                setUploadStatus('🔐 Encrypting original file...');
                 const key = generateEncryptionKey();
                 encryptionKeyForUser = key;
                 const { encryptedBlob, iv, keyHash } = await encryptFile(file, key);
 
-                setUploadStatus('🌐 Uploading to IPFS...');
+                setUploadStatus('🌐 Uploading original to IPFS...');
                 const { cid } = await uploadToIPFS(encryptedBlob, file.name, {
                     patient: address,
                     iv,
                 });
 
-                const toBase64 = (f: File) => new Promise<string>((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.readAsDataURL(f);
-                    reader.onload = () => {
-                        const result = reader.result as string;
-                        const base64 = result.split(',')[1];
-                        resolve(base64);
-                    };
-                    reader.onerror = error => reject(error);
-                });
-                const base64File = await toBase64(file);
-
-                setUploadStatus('🤖 Analyzing with AI...');
-                const { data: analysis, error: analysisError } = await insforge.functions.invoke('analyze-report', {
-                    body: {
-                        file_base64: base64File,
-                        file_type: file.type || 'application/pdf',
-                        file_cid: cid,
-                        encryption_key: key,
-                        iv,
-                        patient_wallet: address,
-                        file_name: file.name,
-                        source: 'ipfs',
-                    },
+                setUploadStatus('🤖 Analyzing secure redacted text with AI...');
+                const analysis: any = await analyzeReport({
+                    file_base64: redactedBase64File,
+                    file_type: fileTypeForBackend,
+                    patient_wallet: address,
+                    file_name: file.name,
                 });
 
-                if (analysisError) throw analysisError;
                 if (analysis?.error) {
-                    throw new Error(`Analysis Failed: ${analysis.error} ${analysis.details ? `(${analysis.details})` : ''}`);
+                    throw new Error(`Analysis Failed: ${analysis.error}`);
                 }
 
-                await insforge.database
-                    .from('analyses')
-                    .update({
-                        file_url: `ipfs://${cid}`,
-                        encryption_key_hash: keyHash,
-                        encryption_key: key, // Store key for user retrieval
-                        ipfs_cid: cid,
-                        encryption_iv: iv,
-                    })
-                    .eq('id', analysis.analysis.id);
+                await updateRecord(analysis.analysis.id, {
+                    file_url: `ipfs://${cid}`,
+                    file_fingerprint: keyHash,
+                    ipfs_cid: cid,
+                    encryption_iv: iv,
+                });
 
                 setUploadStatus('⛓️ Recording on blockchain...');
                 try {
                     const { tx, recordId } = await storeRecord(analysis.analysis.record_hash, analysis.analysis.id);
-                    await insforge.database
-                        .from('analyses')
-                        .update({
-                            tx_hash: tx.hash,
-                            ...(recordId !== undefined && { record_id: recordId })
-                        })
-                        .eq('id', analysis.analysis.id);
+                    await updateRecord(analysis.analysis.id, {
+                        tx_hash: tx.hash,
+                        ...(recordId !== undefined && { record_id: recordId }),
+                    });
                 } catch (blockchainErr) {
                     console.warn('Blockchain storage skipped:', blockchainErr);
                 }
 
                 setUploadStatus('');
                 if (encryptionKeyForUser) {
-                    alert(`✅ File encrypted & uploaded to IPFS!\n\n🔑 Your Encryption Key (save this!):\n${encryptionKeyForUser}`);
+                    // Create a Blob containing the key
+                    const keyBlob = new Blob([encryptionKeyForUser], { type: 'text/plain' });
+                    const keyUrl = URL.createObjectURL(keyBlob);
+
+                    // Create an invisible download link to save the key
+                    const a = document.createElement('a');
+                    a.href = keyUrl;
+                    a.download = `medichain-key-${file.name}.txt`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(keyUrl);
+
+                    alert(`✅ File encrypted & uploaded to IPFS!\n\n🛑 We have automatically downloaded your Encryption Key as a file.\n\nPLEASE STORE IT SECURELY. If you lose it, you can never decrypt this file again.`);
                 }
 
             } else {
-                setUploadStatus('Processing file...');
-                const toBase64 = (file: File) => new Promise<string>((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.readAsDataURL(file);
-                    reader.onload = () => {
-                        const result = reader.result as string;
-                        const base64 = result.split(',')[1];
-                        resolve(base64);
-                    };
-                    reader.onerror = error => reject(error);
+                setUploadStatus('🤖 Analyzing secure redacted text with AI...');
+                const analysis: any = await analyzeReport({
+                    file_base64: redactedBase64File,
+                    file_type: fileTypeForBackend,
+                    patient_wallet: address,
+                    file_name: file.name,
                 });
 
-                const base64File = await toBase64(file);
+                if (analysis?.error) {
+                    throw new Error(`Analysis Failed: ${analysis.error}`);
+                }
 
-                setUploadStatus('🤖 Analyzing with AI...');
-                const { data: analysis, error: analysisError } = await insforge.functions.invoke('analyze-report', {
-                    body: {
-                        file_base64: base64File,
-                        file_type: file.type || 'application/pdf',
-                        patient_wallet: address,
-                        file_name: file.name,
-                    },
-                });
-
-                if (analysisError) throw analysisError;
                 setUploadStatus('⛓️ Recording on blockchain...');
-
                 try {
                     const { tx, recordId } = await storeRecord(analysis.analysis.record_hash, analysis.analysis.id);
-                    await insforge.database
-                        .from('analyses')
-                        .update({
-                            tx_hash: tx.hash,
-                            ...(recordId !== undefined && { record_id: recordId })
-                        })
-                        .eq('id', analysis.analysis.id);
+                    await updateRecord(analysis.analysis.id, {
+                        tx_hash: tx.hash,
+                        ...(recordId !== undefined && { record_id: recordId }),
+                    });
                 } catch (blockchainErr) {
                     console.warn('Blockchain storage skipped:', blockchainErr);
                 }
@@ -322,7 +302,7 @@ export default function PatientDashboard() {
 
             await loadRecords();
             setRefreshTrigger(prev => prev + 1);
-            setActiveTab('twin'); // Auto-switch to Digital Twin
+            setActiveTab('twin');
 
         } catch (err: any) {
             console.error('Upload failed:', err);
@@ -334,10 +314,7 @@ export default function PatientDashboard() {
 
     const cancelAppointment = async (id: string) => {
         try {
-            await insforge.database
-                .from('appointments')
-                .update({ status: 'cancelled', updated_at: new Date().toISOString() })
-                .eq('id', id);
+            await apiCancelAppointment(id);
             await loadAppointments();
         } catch (err) {
             console.error('Failed to cancel:', err);
@@ -360,12 +337,7 @@ export default function PatientDashboard() {
         if (selectedRecord?.id === id) setSelectedRecord(null);
 
         try {
-            const { error } = await insforge.database
-                .from('analyses')
-                .delete()
-                .eq('id', id);
-
-            if (error) throw error;
+            await apiDeleteRecord(id);
             setRefreshTrigger(prev => prev + 1);
             await loadRecords();
         } catch (err: any) {

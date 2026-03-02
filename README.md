@@ -2,7 +2,9 @@
 
 > **AI-powered, blockchain-secured decentralized healthcare intelligence platform.**
 
-Upload medical reports, receive instant AI diagnostics with risk scores, chat with an AI health assistant, watch personalized AI doctor video explanations — all with patient-controlled, on-chain access management.
+🏆 **HackaLeague Track:** Digital, Economic & Information Systems
+
+Upload medical reports, receive instant AI diagnostics with risk scores, chat with an AI health assistant, watch personalized AI doctor video explanations — all with patient-controlled, on-chain access management and zero-knowledge encryption.
 
 ---
 
@@ -580,10 +582,12 @@ medicare-hackaleague/
 
 ## 🔒 Privacy & Security
 
-- Medical reports stored in private InsForge storage — only accessible to the authenticated patient
-- On-chain access control: no doctor can read records without the patient's explicit blockchain transaction
-- SHA-256 hashes stored on-chain ensure report integrity (tamper-proof verification)
-- All AI analysis happens server-side in Edge Functions — raw reports never exposed to third parties
+- **Zero-Knowledge Encryption Pipeline**: Encryption keys are manually entered and locally managed by the patient. Keys are never stored in the database or sent to the backend, ensuring absolute data privacy.
+- **Local PDF Processing**: Text extraction from uploaded PDF files is handled securely in the browser using `pdfjs-dist`, preventing sensitive raw files from unnecessary transit.
+- **Private Storage**: Medical reports are powerfully encrypted and stored securely in InsForge storage — only accessible to the authenticated patient.
+- **On-chain Access Control**: No doctor can read records without the patient's explicit blockchain transaction.
+- **Cryptographic Verification**: SHA-256 hashes stored on-chain ensure report integrity (tamper-proof verification).
+- **Edge Analytics**: AI analysis leverages secure Edge Functions — raw data isn't exposed to third-party databases.
 
 ---
 

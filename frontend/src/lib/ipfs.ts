@@ -5,19 +5,19 @@
  * Files are uploaded as encrypted blobs — the gateway just serves raw bytes.
  */
 
-const PINATA_API_KEY = process.env.NEXT_PUBLIC_PINATA_API_KEY || '';
-const PINATA_SECRET_KEY = process.env.NEXT_PUBLIC_PINATA_SECRET_KEY || '';
 const PINATA_GATEWAY = process.env.NEXT_PUBLIC_PINATA_GATEWAY || 'https://gateway.pinata.cloud/ipfs';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-interface PinataResponse {
-    IpfsHash: string;
-    PinSize: number;
-    Timestamp: string;
+interface BackendIpfsResponse {
+    success: boolean;
+    cid: string;
+    url: string;
+    size: number;
 }
 
 /**
- * Upload an encrypted blob to IPFS via Pinata.
- * Returns the IPFS CID (Content Identifier).
+ * Upload an encrypted blob to IPFS via the local API Backend proxy.
+ * Ensures secret API keys are never exposed to the frontend browser.
  */
 export async function uploadToIPFS(
     blob: Blob,
@@ -27,7 +27,7 @@ export async function uploadToIPFS(
     const formData = new FormData();
     formData.append('file', blob, `${fileName}.encrypted`);
 
-    // Pinata metadata
+    // Pinata metadata (optional for the proxy, but backend accepts it)
     const pinataMetadata = JSON.stringify({
         name: `medilock-${fileName}`,
         keyvalues: {
@@ -38,32 +38,32 @@ export async function uploadToIPFS(
     });
     formData.append('pinataMetadata', pinataMetadata);
 
-    // Pin options
     const pinataOptions = JSON.stringify({
         cidVersion: 1,
     });
     formData.append('pinataOptions', pinataOptions);
 
-    const response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
+    // Call the local backend securely
+    const response = await fetch(`${API_URL}/api/ipfs/upload`, {
         method: 'POST',
-        headers: {
-            'pinata_api_key': PINATA_API_KEY,
-            'pinata_secret_api_key': PINATA_SECRET_KEY,
-        },
         body: formData,
     });
 
     if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`IPFS upload failed: ${response.status} — ${errorText}`);
+        throw new Error(`Backend IPFS proxy failed: ${response.status} — ${errorText}`);
     }
 
-    const result: PinataResponse = await response.json();
+    const result: BackendIpfsResponse = await response.json();
+
+    if (!result.success || !result.cid) {
+        throw new Error(`Backend IPFS proxy invalid response`);
+    }
 
     return {
-        cid: result.IpfsHash,
-        url: `${PINATA_GATEWAY}/${result.IpfsHash}`,
-        size: result.PinSize,
+        cid: result.cid,
+        url: `${PINATA_GATEWAY}/${result.cid}`, // Construct public URL using gateway
+        size: result.size,
     };
 }
 
@@ -90,8 +90,10 @@ export function getIPFSUrl(cid: string): string {
 }
 
 /**
- * Check if Pinata is configured.
+ * Check if IPFS upload is supported.
+ * Since credentials are now securely managed on the backend, this is assumed true
+ * assuming the backend is running.
  */
 export function isIPFSConfigured(): boolean {
-    return !!(PINATA_API_KEY && PINATA_SECRET_KEY && !PINATA_API_KEY.includes('your_pinata'));
+    return true;
 }

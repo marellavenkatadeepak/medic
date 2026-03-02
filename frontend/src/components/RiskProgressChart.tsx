@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { insforge } from '@/lib/insforge';
+import { getPatientRecords } from '@/lib/api';
 
 interface DataPoint {
     date: string;
@@ -26,14 +26,12 @@ export default function RiskProgressChart({ patientWallet, refreshTrigger = 0 }:
     const loadData = async () => {
         setIsLoading(true);
         try {
-            const { data: analyses } = await insforge.database
-                .from('analyses')
-                .select('risk_score,created_at,file_name')
-                .eq('patient_wallet', patientWallet)
-                .order('created_at', { ascending: true });
-
+            const { records: analyses } = await getPatientRecords(patientWallet);
             if (analyses) {
-                setData(analyses.map((a: any) => ({
+                const sorted = [...analyses].sort((a: any, b: any) =>
+                    new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+                );
+                setData(sorted.map((a: any) => ({
                     date: a.created_at,
                     score: a.risk_score,
                     fileName: a.file_name,

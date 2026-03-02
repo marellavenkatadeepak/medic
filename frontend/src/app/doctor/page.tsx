@@ -6,7 +6,15 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useWallet } from '@/hooks/useWallet';
 import { useContract } from '@/hooks/useContract';
-import { insforge } from '@/lib/insforge';
+import {
+    getDoctorProfile,
+    upsertDoctorProfile,
+    getDoctorGrants,
+    getDoctorAppointments,
+    updateDoctorAppointmentStatus,
+    getConsultationNotes,
+    addConsultationNote
+} from '@/lib/api';
 import RiskScore from '@/components/RiskScore';
 import MedicalDisclaimer from '@/components/MedicalDisclaimer';
 
@@ -106,14 +114,11 @@ export default function DoctorDashboard() {
         setIsRegistering(true);
         try {
             const tx = await registerUser(2);
-            await insforge.database
-                .from('doctor_profiles')
-                .insert([{
-                    wallet_address: address,
-                    name: 'Dr. New Doctor',
-                    specialty: 'General Practice',
-                    bio: '',
-                }]);
+            await upsertDoctorProfile(address, {
+                name: 'Dr. New Doctor',
+                specialty: 'General Practice',
+                bio: '',
+            });
 
             await loadProfile();
             setIsRegistered(true);
@@ -128,14 +133,14 @@ export default function DoctorDashboard() {
 
     const loadProfile = async () => {
         if (!address) return;
-        const { data } = await insforge.database
-            .from('doctor_profiles')
-            .select()
-            .eq('wallet_address', address)
-            .limit(1);
-        if (data && data.length > 0) {
-            setProfile(data[0] as DoctorProfile);
-            setProfileForm({ name: data[0].name, specialty: data[0].specialty, bio: data[0].bio || '' });
+        try {
+            const { success, profiles: data } = await getDoctorProfile(address);
+            if (success && data && data.length > 0) {
+                setProfile(data[0] as DoctorProfile);
+                setProfileForm({ name: data[0].name, specialty: data[0].specialty, bio: data[0].bio || '' });
+            }
+        } catch (err) {
+            console.error('Failed to load profile:', err);
         }
     };
 
@@ -148,16 +153,11 @@ export default function DoctorDashboard() {
 
         setIsSavingProfile(true);
         try {
-            if (profile) {
-                await insforge.database
-                    .from('doctor_profiles')
-                    .update({ name: profileForm.name, specialty: profileForm.specialty, bio: profileForm.bio, updated_at: new Date().toISOString() })
-                    .eq('wallet_address', address);
-            } else {
-                await insforge.database
-                    .from('doctor_profiles')
-                    .insert([{ wallet_address: address, name: profileForm.name, specialty: profileForm.specialty, bio: profileForm.bio }]);
-            }
+            await upsertDoctorProfile(address, {
+                name: profileForm.name,
+                specialty: profileForm.specialty,
+                bio: profileForm.bio
+            });
             await loadProfile();
         } catch (err) {
             console.error('Failed to save profile:', err);
@@ -170,23 +170,14 @@ export default function DoctorDashboard() {
         if (!address) return;
         setIsLoading(true);
         try {
-            const { data: accessData } = await insforge.database
-                .from('access_grants')
-                .select()
-                .eq('doctor_wallet', address)
-                .eq('is_active', true)
-                .order('granted_at', { ascending: false });
+            const { success, grants: accessData } = await getDoctorGrants(address);
 
-            if (accessData && accessData.length > 0) {
-                const analysisIds = accessData.map((g: any) => g.analysis_id).filter(Boolean);
-                let analysesMap: Record<string, any> = {};
-                if (analysisIds.length > 0) {
-                    const { data: analyses } = await insforge.database.from('analyses').select().in('id', analysisIds);
-                    if (analyses) analyses.forEach((a: any) => { analysesMap[a.id] = a; });
-                }
-                const enrichedGrants = accessData.map((g: any) => ({ ...g, analysis: analysesMap[g.analysis_id] || null }));
-                setGrants(enrichedGrants);
-                if (enrichedGrants.length > 0) setSelectedGrant(enrichedGrants[0]);
+            if (success && accessData && accessData.length > 0) {
+                setGrants(accessData);
+                if (accessData.length > 0) setSelectedGrant(accessData[0]);
+            } else {
+                setGrants([]);
+                setSelectedGrant(null);
             }
         } catch (err) {
             console.error('Failed to load records:', err);
@@ -198,12 +189,8 @@ export default function DoctorDashboard() {
     const loadAppointments = async () => {
         if (!address) return;
         try {
-            const { data } = await insforge.database
-                .from('appointments')
-                .select()
-                .eq('doctor_wallet', address)
-                .order('date', { ascending: true });
-            if (data) setAppointments(data as Appointment[]);
+            const { success, appointments: data } = await getDoctorAppointments(address);
+            if (success && data) setAppointments(data as Appointment[]);
         } catch (err) {
             console.error('Failed to load appointments:', err);
         }
@@ -212,13 +199,8 @@ export default function DoctorDashboard() {
     const loadConsultNotes = async (patientWallet: string) => {
         if (!address) return;
         try {
-            const { data } = await insforge.database
-                .from('consultation_notes')
-                .select()
-                .eq('doctor_wallet', address)
-                .eq('patient_wallet', patientWallet)
-                .order('created_at', { ascending: false });
-            if (data) setConsultNotes(data as ConsultationNote[]);
+            const { success, notes: data } = await getConsultationNotes(address, patientWallet);
+            if (success && data) setConsultNotes(data as ConsultationNote[]);
         } catch (err) {
             console.error('Failed to load notes:', err);
         }
@@ -228,14 +210,11 @@ export default function DoctorDashboard() {
         if (!address || !selectedGrant || !consultNote.trim()) return;
         setIsSavingNote(true);
         try {
-            await insforge.database
-                .from('consultation_notes')
-                .insert([{
-                    doctor_wallet: address,
-                    patient_wallet: selectedGrant.patient_wallet,
-                    analysis_id: selectedGrant.analysis_id,
-                    note: consultNote.trim(),
-                }]);
+            await addConsultationNote(address, {
+                patient_wallet: selectedGrant.patient_wallet,
+                analysis_id: selectedGrant.analysis_id,
+                note: consultNote.trim(),
+            });
             setConsultNote('');
             await loadConsultNotes(selectedGrant.patient_wallet);
         } catch (err) {
@@ -258,14 +237,8 @@ export default function DoctorDashboard() {
     const handleCalendarCallback = async (code: string, wallet: string) => {
         window.history.replaceState({}, '', '/doctor');
         try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_INSFORGE_BASE_URL}/functions/v1/calendar-callback`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${process.env.NEXT_PUBLIC_INSFORGE_ANON_KEY}`
-                },
-                body: JSON.stringify({ code, wallet })
-            });
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+            const res = await fetch(`${apiUrl}/api/integrations/calendar/callback?code=${code}&state=${wallet}`);
             if (!res.ok) throw new Error('Failed to exchange code');
             await loadProfile();
         } catch (err) {
@@ -275,20 +248,17 @@ export default function DoctorDashboard() {
 
     const updateAppointmentStatus = async (appointmentId: string, status: string) => {
         try {
-            await insforge.database
-                .from('appointments')
-                .update({ status, updated_at: new Date().toISOString() })
-                .eq('id', appointmentId);
+            await updateDoctorAppointmentStatus(appointmentId, status);
 
             if (status === 'confirmed' && profile?.google_calendar_connected) {
                 const apt = appointments.find(a => a.id === appointmentId);
                 if (apt) {
                     try {
-                        const res = await fetch(`${process.env.NEXT_PUBLIC_INSFORGE_BASE_URL}/functions/v1/calendar-create`, {
+                        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                        const res = await fetch(`${apiUrl}/api/integrations/calendar/create`, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
-                                'Authorization': `Bearer ${process.env.NEXT_PUBLIC_INSFORGE_ANON_KEY}`
                             },
                             body: JSON.stringify({
                                 appointment_id: apt.id,

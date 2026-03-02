@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useContract } from '@/hooks/useContract';
-import { insforge } from '@/lib/insforge';
+import { getAllDoctors, getAccessGrants, apiGrantAccess, apiRevokeAccess } from '@/lib/api';
 
 interface AccessManagerProps {
     analysisId: string;
@@ -49,14 +49,9 @@ export default function AccessManager({ analysisId, recordId, patientWallet }: A
 
     const loadAccessGrants = async () => {
         try {
-            const { data } = await insforge.database
-                .from('access_grants')
-                .select('doctor_wallet')
-                .eq('analysis_id', analysisId)
-                .eq('is_active', true);
-
-            if (data) {
-                setGrantedDoctors(data.map((d: any) => d.doctor_wallet));
+            const { grants } = await getAccessGrants(analysisId);
+            if (grants) {
+                setGrantedDoctors(grants.map((d: any) => d.doctor_wallet));
             }
         } catch (err) {
             console.error('Failed to load access grants:', err);
@@ -75,7 +70,7 @@ export default function AccessManager({ analysisId, recordId, patientWallet }: A
 
     const loadDoctors = async () => {
         try {
-            const { data } = await insforge.database.from('doctor_profiles').select();
+            const { doctors: data } = await getAllDoctors();
             if (data) {
                 setDoctors(data as Doctor[]);
             }
@@ -114,12 +109,11 @@ export default function AccessManager({ analysisId, recordId, patientWallet }: A
 
             // Sync to DB regardless of blockchain outcome
             if (patientWallet) {
-                await insforge.database.from('access_grants').insert([{
+                await apiGrantAccess({
                     patient_wallet: patientWallet,
                     doctor_wallet: selectedDoctor.wallet_address,
-                    analysis_id: analysisId,
-                    is_active: true
-                }]);
+                    analysis_id: analysisId
+                });
             }
 
             setGrantedDoctors(prev => [...prev, selectedDoctor.wallet_address]);
@@ -149,10 +143,10 @@ export default function AccessManager({ analysisId, recordId, patientWallet }: A
             await revokeAccess(doctorWallet, recordId);
 
             // Sync with Supabase (deactivate previous grants)
-            await insforge.database.from('access_grants').update({
-                is_active: false,
-                revoked_at: new Date().toISOString()
-            }).eq('analysis_id', analysisId).eq('doctor_wallet', doctorWallet);
+            await apiRevokeAccess({
+                doctor_wallet: doctorWallet,
+                analysis_id: analysisId
+            });
 
             setGrantedDoctors(prev => prev.filter(d => d !== doctorWallet));
             setMessage({ type: 'success', text: `Access revoked from doctor` });

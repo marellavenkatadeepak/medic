@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+httpx
+google-generativeai
+python-multipart
+cryptography>=41.0.0

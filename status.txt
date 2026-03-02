@@ -1,0 +1,66 @@
+﻿On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes to be committed:
+  (use "git restore --staged <file>..." to unstage)
+	modified:   .gitignore
+	modified:   README.md
+	new file:   backend/.env.example
+	new file:   backend/main.py
+	new file:   backend/requirements.txt
+	new file:   backend/routes/__init__.py
+	new file:   backend/routes/analyze.py
+	new file:   backend/routes/appointments.py
+	new file:   backend/routes/chatbot.py
+	new file:   backend/routes/doctor.py
+	new file:   backend/routes/integrations.py
+	new file:   backend/routes/ipfs.py
+	new file:   backend/routes/organ.py
+	new file:   backend/routes/records.py
+	new file:   backend/routes/tavus.py
+	new file:   backend/services/__init__.py
+	new file:   backend/services/gemini.py
+	new file:   backend/services/insforge.py
+	new file:   backend/services/tavus.py
+	new file:   backend/services/vault.py
+	new file:   backend/test_db.py
+	new file:   backend/test_out.txt
+	new file:   backend/test_patch.py
+	deleted:    eraser-diagrams.md
+	modified:   frontend/build.log
+	new file:   frontend/build_output.log
+	new file:   frontend/build_output.txt
+	modified:   frontend/next.config.ts
+	modified:   frontend/package-lock.json
+	modified:   frontend/package.json
+	modified:   frontend/src/app/doctor/page.tsx
+	modified:   frontend/src/app/doctors/page.tsx
+	modified:   frontend/src/app/patient/book/page.tsx
+	modified:   frontend/src/app/patient/components/AnalysisView.tsx
+	modified:   frontend/src/app/patient/components/AppointmentsView.tsx
+	modified:   frontend/src/app/patient/page.tsx
+	modified:   frontend/src/components/AccessManager.tsx
+	modified:   frontend/src/components/ChatBot.tsx
+	modified:   frontend/src/components/DigitalTwin.tsx
+	modified:   frontend/src/components/HealthTimeline.tsx
+	modified:   frontend/src/components/RiskProgressChart.tsx
+	modified:   frontend/src/components/TavusVideo.tsx
+	modified:   frontend/src/hooks/useContract.ts
+	modified:   frontend/src/hooks/useSketchfab.ts
+	new file:   frontend/src/lib/api.ts
+	modified:   frontend/src/lib/insforge.ts
+	modified:   frontend/src/lib/ipfs.ts
+	new file:   frontend/src/lib/localPrivacy.ts
+	new file:   frontend/src/pdfjs.d.ts
+	new file:   frontend/src/workers/privacyWorker.ts
+	new file:   frontend/tsc_output.txt
+	deleted:    git
+	deleted:    image.png
+	new file:   status.txt
+	deleted:    temp_page.tsx.bak
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   status.txt
+

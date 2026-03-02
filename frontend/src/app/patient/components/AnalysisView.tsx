@@ -29,21 +29,29 @@ interface AnalysisViewProps {
 
 export default function AnalysisView({ record }: AnalysisViewProps) {
     const [status, setStatus] = useState('');
+    const [manualKey, setManualKey] = useState('');
 
     const handleViewDocument = async () => {
-        if (!record.ipfs_cid || !record.encryption_key) {
-            alert('Cannot view document: missing IPFS CID or encryption key.'); // TODO: Replace with Toast
+        if (!record.ipfs_cid) {
+            alert('Cannot view document: missing IPFS CID.');
+            return;
+        }
+
+        const keyToUse = record.encryption_key || manualKey;
+
+        if (!keyToUse) {
+            alert('Cannot view document: Please enter your decryption key.');
             return;
         }
 
         try {
             setStatus('🔓 Decrypting document...');
-            const blob = await decryptFileFromIPFS(record.ipfs_cid, record.encryption_key, record.encryption_iv || '');
+            const blob = await decryptFileFromIPFS(record.ipfs_cid, keyToUse, record.encryption_iv || '');
             const url = URL.createObjectURL(blob);
             window.open(url, '_blank');
         } catch (err: any) {
             console.error('Decryption failed:', err);
-            alert(`Failed to decrypt document: ${err.message}`);
+            alert(`Failed to decrypt document. Did you enter the correct key? Error: ${err.message}`);
         } finally {
             setStatus('');
         }
@@ -71,9 +79,24 @@ export default function AnalysisView({ record }: AnalysisViewProps) {
                             <span>•</span>
                             <span className="font-mono text-xs bg-gray-100 px-2 py-1 rounded-md text-gray-600">{record.id.slice(0, 8)}...</span>
                         </p>
+
+                        {!record.encryption_key && (
+                            <div className="mb-4">
+                                <label className="block text-xs font-semibold text-gray-700 mb-1">Enter Decryption Key to View</label>
+                                <input
+                                    type="password"
+                                    value={manualKey}
+                                    onChange={(e) => setManualKey(e.target.value)}
+                                    placeholder="Paste your key here..."
+                                    className="w-full max-w-sm px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                                />
+                            </div>
+                        )}
+
                         <button
                             onClick={handleViewDocument}
-                            className="group relative inline-flex items-center justify-center gap-2 px-5 py-2 text-sm font-semibold text-white transition-all duration-200 bg-gray-900 border border-transparent rounded-xl hover:bg-gray-800 shadow-sm hover:shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900"
+                            disabled={!record.encryption_key && !manualKey}
+                            className="group relative inline-flex items-center justify-center gap-2 px-5 py-2 text-sm font-semibold text-white transition-all duration-200 bg-gray-900 border border-transparent rounded-xl hover:bg-gray-800 shadow-sm hover:shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <span>{status ? status : '👁️ View Original Report'}</span>
                             <span className="group-hover:translate-x-1 transition-transform">→</span>
@@ -213,40 +236,6 @@ export default function AnalysisView({ record }: AnalysisViewProps) {
                             )}
                         </div>
                     </div>
-
-                    {/* Encryption Key Box */}
-                    {record.encryption_key && (
-                        <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-3xl p-5 shadow-lg relative overflow-hidden group">
-                            <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay pointer-events-none"></div>
-                            <div className="absolute top-0 right-0 w-24 h-24 bg-yellow-400/10 rounded-full blur-2xl -mr-8 -mt-8"></div>
-
-                            <h4 className="font-bold uppercase text-[9px] tracking-widest mb-3 flex items-center justify-between text-gray-300 relative z-10">
-                                <span className="flex items-center gap-1.5"><span className="text-yellow-400 text-xs">🔑</span> Encryption Key</span>
-                                <span className="bg-red-500/20 text-red-400 border border-red-500/30 px-1.5 py-0.5 rounded text-[8px] font-black tracking-widest">SECRET</span>
-                            </h4>
-
-                            <p className="text-[10px] text-gray-400 mb-3 relative z-10 font-medium">Keep this key safe to decrypt your report later.</p>
-
-                            <div className="relative z-10 font-mono text-[10px] text-emerald-400 break-all bg-black/60 p-3 rounded-xl border border-gray-700/50 mb-3 shadow-inner hover:bg-black/80 transition-all duration-300">
-                                <div className="blur-[3px] group-hover:blur-none transition-all duration-300">
-                                    {record.encryption_key}
-                                </div>
-                            </div>
-
-                            <button
-                                onClick={() => {
-                                    navigator.clipboard.writeText(record.encryption_key!);
-                                    alert('Key copied to clipboard!');
-                                }}
-                                className="relative z-10 w-full bg-white/5 hover:bg-white/10 text-white text-xs font-semibold py-2.5 rounded-xl transition-all border border-slate-600 hover:border-slate-500 flex items-center justify-center gap-2"
-                            >
-                                <span>Copy Key</span>
-                                <svg className="w-3 h-3 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                </svg>
-                            </button>
-                        </div>
-                    )}
                 </div>
             </div>
         </div>

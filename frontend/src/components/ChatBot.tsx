@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { insforge } from '@/lib/insforge';
+import { getAppointments, getAllDoctors, createAppointment, sendChatMessage } from '@/lib/api';
 
 
 interface Message {
@@ -123,19 +123,9 @@ export default function ChatBot({ patientWallet }: ChatBotProps) {
 
     const fetchAppointments = async () => {
         try {
-            const { data } = await insforge.database.from('appointments').select()
-                .eq('patient_wallet', patientWallet).order('date', { ascending: true });
-            if (data && data.length > 0) {
-                const doctorWallets = [...new Set(data.map((a: any) => a.doctor_wallet))];
-                const { data: profiles } = await insforge.database.from('doctor_profiles').select()
-                    .in('wallet_address', doctorWallets);
-                const profileMap: Record<string, any> = {};
-                if (profiles) profiles.forEach((p: any) => { profileMap[p.wallet_address] = p; });
-                return data.map((a: any) => ({
-                    ...a,
-                    doctor_name: profileMap[a.doctor_wallet]?.name || 'Unknown Doctor',
-                    doctor_specialty: profileMap[a.doctor_wallet]?.specialty || 'General',
-                }));
+            const response = await getAppointments(patientWallet);
+            if (response.success && response.appointments) {
+                return response.appointments;
             }
             return [];
         } catch { return []; }
@@ -143,20 +133,18 @@ export default function ChatBot({ patientWallet }: ChatBotProps) {
 
     const fetchDoctors = async () => {
         try {
-            const { data } = await insforge.database.from('doctor_profiles').select()
-                .order('name', { ascending: true });
-            return data || [];
+            const response = await getAllDoctors();
+            return response.doctors || [];
         } catch { return []; }
     };
 
     const bookAppointment = async (doctorWallet: string, date: string, time: string, reason: string) => {
-        const { data, error } = await insforge.database.from('appointments').insert({
+        const response = await createAppointment({
             patient_wallet: patientWallet, doctor_wallet: doctorWallet, date, time,
-            status: 'pending', reason: reason || 'General consultation',
-            created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-        }).select();
-        if (error) throw error;
-        return data;
+            reason: reason || 'General consultation'
+        });
+        if (!response.success) throw new Error("Failed to book appointment");
+        return response;
     };
 
     const formatAppointments = (appts: any[]) => {
@@ -209,10 +197,9 @@ export default function ChatBot({ patientWallet }: ChatBotProps) {
                 return;
             }
 
-            const { data, error } = await insforge.functions.invoke('medical-chatbot', {
-                body: { patient_wallet: patientWallet, message: userMsg },
+            const data: any = await sendChatMessage({
+                patient_wallet: patientWallet, message: userMsg,
             });
-            if (error) throw error;
             setMessages(prev => [...prev, {
                 id: Date.now().toString(),
                 role: 'assistant',

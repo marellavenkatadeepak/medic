@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Maximize2, Minimize2, RotateCcw, Layers, ChevronRight, AlertTriangle, Shield, Activity, Sparkles } from 'lucide-react';
 import { useSketchfab } from '../hooks/useSketchfab';
-import { insforge } from '@/lib/insforge';
+import { analyzeOrgan, updateRecord } from '@/lib/api';
 
 // ─── ANATOMY MAPPING (EXACT node names from model) ───────────────
 const ANATOMY_MAPPING: Record<string, string> = {
@@ -362,11 +362,10 @@ export default function DigitalTwin({ analysisData, recordId }: DigitalTwinProps
             // New organ? Actually hit the Edge Function
             setIsAnalyzing(true);
             try {
-                const { data, error } = await insforge.functions.invoke('analyze-organ', {
-                    body: { organName, analysisText: JSON.stringify(analysisData) }
+                const data = await analyzeOrgan({
+                    organName, analysisText: analysisData
                 });
 
-                if (error) throw error;
                 if (data?.organAnalysis) {
                     const newAnalysis = data.organAnalysis;
                     setSystemStatus(prev => {
@@ -390,11 +389,9 @@ export default function DigitalTwin({ analysisData, recordId }: DigitalTwinProps
                                     return obj;
                                 }, {});
 
-                            insforge.database.from('analyses')
-                                .update({ organ_data: organDataToSave })
-                                .eq('id', recordId)
-                                .then(({ error }) => {
-                                    if (error) console.error("Failed to save organ data:", error);
+                            updateRecord(recordId, { organ_data: organDataToSave })
+                                .catch((error) => {
+                                    console.error("Failed to save organ data:", error);
                                 });
                         }
 

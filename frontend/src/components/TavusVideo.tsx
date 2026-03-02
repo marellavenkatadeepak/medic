@@ -48,41 +48,28 @@ export default function TavusVideo({ summary, riskScore, conditions, specialist,
         setStatus('connecting');
         setErrorMsg('');
         try {
-            const apiKey = process.env.NEXT_PUBLIC_TAVUS_API_KEY;
-            if (!apiKey) throw new Error('Tavus API key not configured');
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-            const conversationContext = `You are a friendly AI medical assistant explaining a patient's report results. 
-Here is the analysis:
-- Summary: ${summary}
-- Risk Score: ${riskScore}/100
-- Conditions Found: ${conditions.join(', ')}
-- Recommended Specialist: ${specialist}
-- Urgency Level: ${urgency}
-
-Explain these results clearly and compassionately. Reassure the patient while being honest. 
-Suggest next steps and when they should see the ${specialist}.
-Do NOT diagnose. You are not replacing a doctor.`;
-
-            const response = await fetch('https://tavusapi.com/v2/conversations', {
+            const response = await fetch(`${apiUrl}/api/tavus-conversation`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'x-api-key': apiKey,
                 },
                 body: JSON.stringify({
-                    replica_id: process.env.NEXT_PUBLIC_TAVUS_REPLICA_ID || 'rfe12d8b9597',
-                    conversation_name: `Medical Report Review - ${new Date().toLocaleDateString()}`,
-                    custom_greeting: `Hi there! I've reviewed your medical report. Let me walk you through the findings. ${summary}`,
-                    properties: {
-                        max_call_duration: 600,
-                    },
-                    conversational_context: conversationContext,
+                    summary,
+                    risk_score: riskScore,
+                    conditions,
+                    specialist,
+                    urgency
                 }),
             });
 
             if (!response.ok) {
                 const errData = await response.json().catch(() => ({}));
-                throw new Error(errData.message || `Tavus API error: ${response.status}`);
+                if (response.status === 402) {
+                    throw new Error('Tavus API Quota Exceeded (402 Payment Required). Please check your API billing or upgrade your plan.');
+                }
+                throw new Error(errData.detail || `Backend API error: ${response.status}`);
             }
 
             const data = await response.json();

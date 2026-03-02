@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useWallet } from '@/hooks/useWallet';
-import { insforge } from '@/lib/insforge';
+import { getAllDoctors, getBookedSlots as fetchBookedSlots, createAppointment } from '@/lib/api';
 
 interface DoctorProfile {
     id: string;
@@ -57,29 +57,16 @@ export default function BookAppointmentPage() {
     const loadDoctors = async () => {
         setIsLoading(true);
         try {
-            let query = insforge.database
-                .from('doctor_profiles')
-                .select()
-                .order('name', { ascending: true });
+            const { success, doctors: data } = await getAllDoctors(specialtyFilter || undefined);
 
-            if (specialtyFilter) {
-                query = query.ilike('specialty', `%${specialtyFilter}%`);
-            }
-
-            const { data } = await query;
-
-            if (data && data.length > 0) {
+            if (success && data && data.length > 0) {
                 setDoctors(data as DoctorProfile[]);
             } else {
                 console.log("No doctors found, attempting fallback to shreeharsha...");
-                const { data: defaultDoc } = await insforge.database
-                    .from('doctor_profiles')
-                    .select()
-                    .ilike('name', '%shreeharsha%')
-                    .limit(1);
+                const { success: fallbackSuccess, doctors: fallbackDocs } = await getAllDoctors('shreeharsha');
 
-                if (defaultDoc && defaultDoc.length > 0) {
-                    setDoctors(defaultDoc as DoctorProfile[]);
+                if (fallbackSuccess && fallbackDocs && fallbackDocs.length > 0) {
+                    setDoctors(fallbackDocs as DoctorProfile[]);
                 } else {
                     setDoctors([]);
                 }
@@ -93,13 +80,10 @@ export default function BookAppointmentPage() {
 
     const loadBookedSlots = async (doctorWallet: string, date: string) => {
         try {
-            const { data } = await insforge.database
-                .from('appointments')
-                .select('time')
-                .eq('doctor_wallet', doctorWallet)
-                .eq('date', date)
-                .neq('status', 'cancelled');
-            if (data) setBookedSlots(data.map((d: any) => d.time?.slice(0, 5)));
+            const { success, booked_slots } = await fetchBookedSlots(doctorWallet, date);
+            if (success && booked_slots) {
+                setBookedSlots(booked_slots);
+            }
         } catch (err) {
             console.error('Failed to load booked slots:', err);
         }
@@ -115,17 +99,14 @@ export default function BookAppointmentPage() {
         if (!address || !selectedDoctor || !selectedDate || !selectedTime) return;
         setIsBooking(true);
         try {
-            const { error } = await insforge.database
-                .from('appointments')
-                .insert([{
-                    patient_wallet: address,
-                    doctor_wallet: selectedDoctor.wallet_address,
-                    date: selectedDate,
-                    time: selectedTime,
-                    reason: reason,
-                    status: 'pending',
-                }]);
-            if (error) throw error;
+            const { success } = await createAppointment({
+                patient_wallet: address,
+                doctor_wallet: selectedDoctor.wallet_address,
+                date: selectedDate,
+                time: selectedTime,
+                reason: reason,
+            });
+            if (!success) throw new Error("Failed to create appointment");
             setSuccessMsg(`Your appointment with Dr. ${selectedDoctor.name} has been successfully requested. You will receive a confirmation shortly.`);
             setStep(3);
         } catch (err: any) {

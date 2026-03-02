@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { insforge } from '@/lib/insforge';
+import { getAppointments, cancelAppointment as cancelAppointmentApi } from '@/lib/api';
 
 interface Appointment {
     id: string;
@@ -39,31 +39,9 @@ export default function AppointmentsView({ address }: AppointmentsViewProps) {
     const loadAppointments = async () => {
         if (!address) return;
         try {
-            const { data: appts } = await insforge.database
-                .from('appointments')
-                .select()
-                .eq('patient_wallet', address)
-                .order('date', { ascending: true });
-
-            if (appts && appts.length > 0) {
-                // Fetch doctor profiles for names
-                const doctorWallets = [...new Set(appts.map((a: any) => a.doctor_wallet))];
-                const { data: profiles } = await insforge.database
-                    .from('doctor_profiles')
-                    .select()
-                    .in('wallet_address', doctorWallets);
-
-                const profileMap: Record<string, any> = {};
-                if (profiles) profiles.forEach((p: any) => { profileMap[p.wallet_address] = p; });
-
-                const enriched = appts.map((a: any) => ({
-                    ...a,
-                    doctor_name: profileMap[a.doctor_wallet]?.name || null,
-                    doctor_specialty: profileMap[a.doctor_wallet]?.specialty || null,
-                }));
-                setAppointments(enriched);
-            } else if (appts) {
-                setAppointments(appts as Appointment[]);
+            const res = await getAppointments(address);
+            if (res.success && res.appointments) {
+                setAppointments(res.appointments as Appointment[]);
             }
         } catch (err) {
             console.error('Failed to load appointments:', err);
@@ -75,10 +53,7 @@ export default function AppointmentsView({ address }: AppointmentsViewProps) {
     const cancelAppointment = async (id: string) => {
         if (!confirm("Are you sure you want to cancel this appointment?")) return;
         try {
-            await insforge.database
-                .from('appointments')
-                .update({ status: 'cancelled', updated_at: new Date().toISOString() })
-                .eq('id', id);
+            await cancelAppointmentApi(id);
             await loadAppointments();
         } catch (err) {
             console.error('Failed to cancel:', err);

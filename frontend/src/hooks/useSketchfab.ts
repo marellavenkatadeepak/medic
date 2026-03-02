@@ -59,22 +59,31 @@ export function useSketchfab(
                         }
                     });
 
-                    sketchfabApi.getNodeMap((err: any, nodesMap: Record<number, SketchfabNode>) => {
-                        if (!err) {
-                            setNodes(nodesMap);
-                            console.log(`📋 ${Object.keys(nodesMap).length} nodes loaded`);
-                        }
-                    });
+                    // Wrap in try-catch to catch LavaMoat / Webpack proxy errors caused by MetaMask
+                    try {
+                        sketchfabApi.getNodeMap((err: any, nodesMap: Record<number, SketchfabNode>) => {
+                            if (!err && nodesMap) {
+                                setNodes(nodesMap);
+                                console.log(`📋 ${Object.keys(nodesMap).length} nodes loaded`);
+                            } else if (err) {
+                                console.error("Sketchfab NodeMap error (MetaMask LavaMoat conflict possible):", err);
+                                setError("MetaMask/Web3 wallet is blocking the 3D Viewer. Please disable it or use Incognito Mode.");
+                            }
+                        });
 
-                    sketchfabApi.getMaterialList((err: any, mats: any[]) => {
-                        if (!err) {
-                            setMaterials(mats);
-                            console.log(`🎨 ${mats.length} materials:`, mats.map(m => m.name));
-                            mats.forEach(m => {
-                                originalMaterialsRef.current[m.id] = JSON.parse(JSON.stringify(m));
-                            });
-                        }
-                    });
+                        sketchfabApi.getMaterialList((err: any, mats: any[]) => {
+                            if (!err && mats) {
+                                setMaterials(mats);
+                                console.log(`🎨 ${mats.length} materials:`, mats.map(m => m.name));
+                                mats.forEach(m => {
+                                    originalMaterialsRef.current[m.id] = JSON.parse(JSON.stringify(m));
+                                });
+                            }
+                        });
+                    } catch (e: any) {
+                        console.error("Sketchfab Webpack/LavaMoat crash:", e);
+                        setError("MetaMask/Web3 wallet is blocking the 3D Viewer. Please disable it or use Incognito Mode.");
+                    }
 
                     sketchfabApi.addEventListener('click', (e: any) => {
                         if (e.instanceID) setLastClickedNode(e.instanceID);

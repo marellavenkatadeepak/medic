@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { insforge } from '@/lib/insforge';
+import { getAllDoctors } from '@/lib/api';
 import { useWallet } from '@/hooks/useWallet';
 
 interface Doctor {
@@ -27,10 +27,7 @@ export default function DoctorsPage() {
     const loadDoctors = async () => {
         setIsLoading(true);
         try {
-            const { data } = await insforge.database
-                .from('doctor_profiles')
-                .select()
-                .order('name', { ascending: true });
+            const { doctors: data } = await getAllDoctors();
             if (data) setDoctors(data as Doctor[]);
         } catch (err) {
             console.error('Failed to load doctors:', err);

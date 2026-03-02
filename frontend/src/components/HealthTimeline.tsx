@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { insforge } from '@/lib/insforge';
+import { getPatientRecords } from '@/lib/api';
 import RiskScore from './RiskScore';
 
 interface TimelineEntry {
@@ -31,12 +31,13 @@ export default function HealthTimeline({ patientWallet, refreshTrigger = 0 }: He
     const loadTimeline = async () => {
         setIsLoading(true);
         try {
-            const { data } = await insforge.database
-                .from('analyses')
-                .select()
-                .eq('patient_wallet', patientWallet)
-                .order('created_at', { ascending: false });
-            if (data) setEntries(data as TimelineEntry[]);
+            const { records: data } = await getPatientRecords(patientWallet);
+            if (data) {
+                const sorted = [...data].sort((a: any, b: any) =>
+                    new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+                );
+                setEntries(sorted as TimelineEntry[]);
+            }
         } catch (err) {
             console.error('Failed to load timeline:', err);
         } finally {

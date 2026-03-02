@@ -49,4 +49,22 @@ Thumbs.db
 *.pem
 *.tsbuildinfo
 next-env.d.ts
-next-env.d.ts
+
+# ─── Backend (FastAPI / Python) ───────────────────────────────
+# NEVER commit .env — it contains all API keys and secrets
+backend/.env
+backend/__pycache__/
+backend/routes/__pycache__/
+backend/services/__pycache__/
+__pycache__/
+*.pyc
+*.pyo
+
+# Python virtual environment
+backend/venv/
+backend/.venv/
+venv/
+.venv/
+
+# Functions env (legacy edge functions)
+functions/.env
