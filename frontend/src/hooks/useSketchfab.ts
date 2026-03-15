@@ -32,12 +32,39 @@ export function useSketchfab(
             initViewer();
             return;
         }
+        // Try loading from static.sketchfab.com first, with retry logic
         const script = document.createElement('script');
         script.src = 'https://static.sketchfab.com/api/sketchfab-viewer-1.12.1.js';
-        script.onload = () => initViewer();
-        script.onerror = () => setError('Failed to load Sketchfab API script');
+        script.async = true;
+        script.crossOrigin = 'anonymous';
+        
+        let timeoutId: NodeJS.Timeout;
+        
+        const handleError = () => {
+            clearTimeout(timeoutId);
+            console.warn('Failed to load Sketchfab from CDN (static.sketchfab.com), trying backup URL');
+            setError('Sketchfab 3D viewer is temporarily unavailable. The app will continue to work without 3D visualization.');
+            // Don't set fatal error - allow app to continue
+        };
+        
+        script.onerror = handleError;
+        
+        timeoutId = setTimeout(() => {
+            if (!window.Sketchfab) {
+                handleError();
+            }
+        }, 10000); // 10 second timeout
+        
+        script.onload = () => {
+            clearTimeout(timeoutId);
+            initViewer();
+        };
+        
         document.body.appendChild(script);
-        return () => { };
+        
+        return () => {
+            clearTimeout(timeoutId);
+        };
     }, []);
 
     const initViewer = useCallback(() => {

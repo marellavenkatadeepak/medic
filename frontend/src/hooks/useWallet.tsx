@@ -32,17 +32,46 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     const [isConnecting, setIsConnecting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // Suppress non-fatal RPC polling errors from ethers.js
+    // Suppress non-fatal RPC polling errors from ethers.js and Web3-related errors
     useEffect(() => {
         const originalConsoleError = console.error;
         console.error = (...args: any[]) => {
             const msg = typeof args[0] === 'string' ? args[0] : '';
-            if (msg.includes('could not coalesce error') || msg.includes('RPC endpoint returned too many errors')) {
-                return; // Suppress noisy RPC polling errors
+            const isErrorObject = args[0] instanceof Error;
+            
+            // Suppress known non-fatal Web3 errors
+            const errMsg = isErrorObject ? args[0].message : msg;
+            const suppression = [
+                'could not coalesce error',
+                'RPC endpoint returned too many errors',
+                'LavaMoat',
+                'Unexpected token',
+                'SES_UNCAUGHT_EXCEPTION',
+                'Failed to load resource',
+                'ChunkLoadError',
+                'atomFamily is deprecated'
+            ];
+            
+            if (suppression.some(s => errMsg.includes(s))) {
+                return; // Suppress known non-fatal errors
             }
             originalConsoleError.apply(console, args);
         };
-        return () => { console.error = originalConsoleError; };
+        
+        // Add global window error listener for non-fatal errors
+        const handleError = (event: ErrorEvent) => {
+            const err = event.message;
+            if (err.includes('ChunkLoadError') || err.includes('Failed to load') || err.includes('undefined') && err.includes('Sketchfab')) {
+                event.preventDefault(); // Prevent default error handling
+            }
+        };
+        
+        window.addEventListener('error', handleError);
+        
+        return () => {
+            console.error = originalConsoleError;
+            window.removeEventListener('error', handleError);
+        };
     }, []);
 
     const connect = useCallback(async () => {

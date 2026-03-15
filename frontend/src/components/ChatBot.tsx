@@ -23,11 +23,14 @@ function renderMarkdown(text: string) {
     const elements: React.ReactNode[] = [];
     let listItems: React.ReactNode[] = [];
     let listType: 'ul' | 'ol' | null = null;
+    let listStartIdx = 0;
+    let elementKeyCounter = 0;
 
     const flushList = () => {
         if (listItems.length > 0) {
-            if (listType === 'ul') elements.push(<ul key={elements.length} className="list-disc pl-5 mb-2 space-y-0.5">{listItems}</ul>);
-            else elements.push(<ol key={elements.length} className="list-decimal pl-5 mb-2 space-y-0.5">{listItems}</ol>);
+            const listKey = `list-${elementKeyCounter++}`;
+            if (listType === 'ul') elements.push(<ul key={listKey} className="list-disc pl-5 mb-2 space-y-0.5">{listItems}</ul>);
+            else elements.push(<ol key={listKey} className="list-decimal pl-5 mb-2 space-y-0.5">{listItems}</ol>);
             listItems = [];
             listType = null;
         }
@@ -66,23 +69,26 @@ function renderMarkdown(text: string) {
         if (ulMatch) {
             if (listType !== 'ul') flushList();
             listType = 'ul';
-            listItems.push(<li key={idx}>{parseInline(ulMatch[1], idx)}</li>);
+            const itemKey = `li-${elementKeyCounter}-${listItems.length}`;
+            listItems.push(<li key={itemKey}>{parseInline(ulMatch[1], idx)}</li>);
         } else if (olMatch) {
             if (listType !== 'ol') flushList();
             listType = 'ol';
-            listItems.push(<li key={idx}>{parseInline(olMatch[1], idx)}</li>);
+            const itemKey = `li-${elementKeyCounter}-${listItems.length}`;
+            listItems.push(<li key={itemKey}>{parseInline(olMatch[1], idx)}</li>);
         } else {
             flushList();
+            const elemKey = `elem-${elementKeyCounter++}`;
             if (h1Match) {
-                elements.push(<h3 key={idx} className="font-bold text-gray-900 text-base mb-1 mt-2">{parseInline(h1Match[1], idx)}</h3>);
+                elements.push(<h3 key={elemKey} className="font-bold text-gray-900 text-base mb-1 mt-2">{parseInline(h1Match[1], idx)}</h3>);
             } else if (h2Match) {
-                elements.push(<h4 key={idx} className="font-semibold text-gray-900 text-sm mb-1 mt-2">{parseInline(h2Match[1], idx)}</h4>);
+                elements.push(<h4 key={elemKey} className="font-semibold text-gray-900 text-sm mb-1 mt-2">{parseInline(h2Match[1], idx)}</h4>);
             } else if (h3Match) {
-                elements.push(<h5 key={idx} className="font-semibold text-gray-900 text-sm mb-0.5 mt-1">{parseInline(h3Match[1], idx)}</h5>);
+                elements.push(<h5 key={elemKey} className="font-semibold text-gray-900 text-sm mb-0.5 mt-1">{parseInline(h3Match[1], idx)}</h5>);
             } else if (line.trim() === '') {
                 // skip blank lines but they implicitly separate paragraphs
             } else {
-                elements.push(<p key={idx} className="mb-1.5 last:mb-0">{parseInline(line, idx)}</p>);
+                elements.push(<p key={elemKey} className="mb-1.5 last:mb-0">{parseInline(line, idx)}</p>);
             }
         }
     });
