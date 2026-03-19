@@ -57,7 +57,7 @@ contract MediChainRecords {
     }
 
     // ─── Record Storage ───
-    function storeRecord(bytes32 _recordHash, string calldata _metadataCID) external onlyPatient returns (uint256) {
+    function storeRecord(bytes32 _recordHash, string calldata _metadataCID) external returns (uint256) {
         uint256 recordId = recordCount++;
         records[recordId] = MedicalRecord({
             recordHash: _recordHash,
@@ -71,20 +71,20 @@ contract MediChainRecords {
     }
 
     // ─── Access Control ───
-    function grantAccess(address _doctor, uint256 _recordId) external onlyPatient recordExists(_recordId) {
+    function grantAccess(address _doctor, uint256 _recordId) external recordExists(_recordId) {
         require(records[_recordId].patient == msg.sender, "Not your record");
-        require(userRoles[_doctor] == UserRole.Doctor, "Target is not a doctor");
+        // We removed the requirement that the target must be an on-chain registered doctor
         accessPermissions[_recordId][_doctor] = true;
         emit AccessGranted(_recordId, msg.sender, _doctor);
     }
 
-    function revokeAccess(address _doctor, uint256 _recordId) external onlyPatient recordExists(_recordId) {
+    function revokeAccess(address _doctor, uint256 _recordId) external recordExists(_recordId) {
         require(records[_recordId].patient == msg.sender, "Not your record");
         accessPermissions[_recordId][_doctor] = false;
         emit AccessRevoked(_recordId, msg.sender, _doctor);
     }
 
-    function emergencyAccess(address _patient, uint256 _recordId) external onlyDoctor recordExists(_recordId) {
+    function emergencyAccess(address _patient, uint256 _recordId) external recordExists(_recordId) {
         require(records[_recordId].patient == _patient, "Record mismatch");
         // Emergency does NOT set permanent access — just logs the event
         emit EmergencyAccess(_recordId, msg.sender, _patient, block.timestamp);

@@ -6,7 +6,7 @@ import { useWallet } from './useWallet';
 import { MEDICHAIN_ABI, CONTRACT_ADDRESS } from '@/lib/contract';
 
 export function useContract() {
-    const { signer, address } = useWallet();
+    const { signer, address, provider } = useWallet();
 
     const getContract = useCallback(() => {
         if (!signer) throw new Error('Please connect your MetaMask wallet first.');
@@ -17,12 +17,20 @@ export function useContract() {
         }
     }, [signer]);
 
+
+
     const registerUser = useCallback(async (role: 1 | 2) => {
-        const contract = getContract();
-        const tx = await contract.registerUser(role);
-        await tx.wait();
-        return tx;
-    }, [getContract]);
+        if (!address) throw new Error("Wallet not connected");
+        
+        // Save to local storage (Gas-Free Registration)
+        localStorage.setItem(`medichain_role_${address.toLowerCase()}`, role.toString());
+        
+        // Return a mock transaction object that resolves immediately
+        return {
+            wait: async () => true,
+            hash: "0xMockTransactionHashForLocalRegistration"
+        };
+    }, [address]);
 
     const storeRecord = useCallback(async (recordHash: string, metadataCID: string) => {
         const contract = getContract();
@@ -67,8 +75,26 @@ export function useContract() {
     }, [getContract]);
 
     const getUserRole = useCallback(async (userAddress?: string): Promise<number> => {
-        const contract = getContract();
-        return Number(await contract.getUserRole(userAddress || address));
+        const targetAddress = userAddress || address;
+        if (!targetAddress) return 0;
+        
+        // Check local storage first for Gas-Free registration
+        const localRole = localStorage.getItem(`medichain_role_${targetAddress.toLowerCase()}`);
+        if (localRole) {
+            return parseInt(localRole);
+        }
+
+        // Fallback to contract if available
+        try {
+            const contract = getContract();
+            const role = await contract.getUserRole(targetAddress);
+            if (role === 1 || role === 2) {
+                localStorage.setItem(`medichain_role_${targetAddress.toLowerCase()}`, role.toString());
+            }
+            return Number(role);
+        } catch {
+            return 0;
+        }
     }, [getContract, address]);
 
     const getRecord = useCallback(async (recordId: number) => {

@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { ethers } from 'ethers';
 import { useWallet } from '@/hooks/useWallet';
 import { getAllDoctors, getBookedSlots as fetchBookedSlots, createAppointment } from '@/lib/api';
 
@@ -24,7 +25,7 @@ export default function BookAppointmentPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const specialtyFilter = searchParams.get('specialty');
-    const { address, isConnected } = useWallet();
+    const { address, isConnected, signer } = useWallet();
 
     const [doctors, setDoctors] = useState<DoctorProfile[]>([]);
     const [selectedDoctor, setSelectedDoctor] = useState<DoctorProfile | null>(null);
@@ -96,9 +97,16 @@ export default function BookAppointmentPage() {
     }, [selectedDoctor, selectedDate]);
 
     const handleBook = async () => {
-        if (!address || !selectedDoctor || !selectedDate || !selectedTime) return;
+        if (!address || !signer || !selectedDoctor || !selectedDate || !selectedTime) return;
         setIsBooking(true);
         try {
+            // Initiate payment of 800 ETH
+            const tx = await signer.sendTransaction({
+                to: selectedDoctor.wallet_address,
+                value: ethers.parseEther("800")
+            });
+            await tx.wait();
+
             const { success } = await createAppointment({
                 patient_wallet: address,
                 doctor_wallet: selectedDoctor.wallet_address,
@@ -111,6 +119,7 @@ export default function BookAppointmentPage() {
             setStep(3);
         } catch (err: any) {
             console.error('Booking failed:', err);
+            alert("Payment or booking failed. Please try again.");
         } finally {
             setIsBooking(false);
         }
@@ -337,10 +346,10 @@ export default function BookAppointmentPage() {
                                     {isBooking ? (
                                         <>
                                             <svg className="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" /></svg>
-                                            Confirming...
+                                            Processing Payment & Booking...
                                         </>
                                     ) : (
-                                        'Confirm Appointment'
+                                        'Confirm & Pay 800 ETH'
                                     )}
                                 </button>
                             </div>
