@@ -466,17 +466,18 @@ The **Provider Profile** tab lets doctors set up their public-facing profile —
 | Layer | Tech |
 |-------|------|
 | **Frontend** | Next.js 15, TypeScript, TailwindCSS, ethers.js |
-| **Backend** | InsForge (PostgreSQL, Storage, AI, Edge Functions) |
+| **Backend** | FastAPI (Python), InsForge (PostgreSQL, Storage) |
 | **Blockchain** | Solidity, Hardhat, MetaMask |
-| **AI Services** | InsForge AI (Claude), Tavus Avatar API |
+| **AI Services** | Gemini AI, Tavus Avatar API |
 
+### System Flow
 ### System Flow
 
 ```
-Patient (MetaMask) ──► Upload Report ──► InsForge Storage
+Patient (MetaMask) ──► Upload Report ──► InsForge Storage / FastAPI Backend
                                               │
-                                    analyze-report (Edge Fn)
-                                    AI extracts text + analysis
+                                    analyze endpoint (FastAPI)
+                                    Gemini AI extracts text & analysis
                                               │
                               SHA-256 hash ──► Blockchain (Solidity)
                                               │
@@ -485,7 +486,6 @@ Patient (MetaMask) ──► Upload Report ──► InsForge Storage
                                               │
                           Doctor (granted access) ──► Views records
 ```
-
 ---
 
 ## 🚀 Quick Start
@@ -512,21 +512,32 @@ Copy the deployed contract address to `frontend/.env`:
 NEXT_PUBLIC_CONTRACT_ADDRESS=0xYourDeployedAddress
 ```
 
-### 3. Environment Variables
+### 3. Backend (FastAPI)
+
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+python main.py
+```
+
+### 4. Environment Variables
 
 **`frontend/.env`**:
 ```
+NEXT_PUBLIC_API_URL=http://localhost:8000/api
 NEXT_PUBLIC_INSFORGE_BASE_URL=https://afhtz3nj.us-west.insforge.app
 NEXT_PUBLIC_INSFORGE_ANON_KEY=<your-anon-key>
 NEXT_PUBLIC_CONTRACT_ADDRESS=<deployed-contract-address>
 ```
 
-**InsForge Edge Function environment** (set in InsForge dashboard):
+**`backend/.env`**:
 ```
+GEMINI_API_KEY=<your-gemini-key>
 TAVUS_API_KEY=<your-tavus-api-key>
-TAVUS_REPLICA_ID=<your-tavus-replica-id>
+# and other backend tokens
 ```
-
 ---
 
 ## 📁 Project Structure
@@ -550,21 +561,21 @@ medicare-hackaleague/
 │           │       └── AccessManager.tsx
 │           └── doctor/
 │               └── page.tsx        # Doctor dashboard
-├── functions/                      # InsForge Edge Functions
-│   ├── analyze-report.js           # AI report analysis
-│   ├── medical-chatbot.js          # AI chat backend
-│   └── tavus-video.js              # AI doctor video generation
+├── backend/                        # FastAPI Python Backend
+│   ├── main.py                     # API Entry point
+│   ├── routes/                     # Custom HTTP endpoints
+│   └── services/                   # External APIs (Gemini, Tavus)
 └── screenshots/                    # Website screenshots (for README)
 ```
 
 ---
 
-## 🧠 InsForge Backend
+## 🧠 Dedicated Backend (FastAPI)
 
-- **Database tables**: `users`, `analyses`, `chat_history`, `access_grants`, `appointments`
-- **Storage**: `medical-reports` bucket (private, patient-scoped)
-- **Edge Functions**: `analyze-report`, `medical-chatbot`, `tavus-video`
-
+- **API Engine**: FastAPI / Python
+- **Database tables**: `users`, `analyses`, `chat_history`, `access_grants`, `appointments` (via InsForge PostgreSQL)
+- **Storage**: `medical-reports` bucket (via InsForge Storage)
+- **AI Integration**: Custom routes using Gemini APIs
 ---
 
 ## ⛓️ Smart Contract (`MediChainRecords.sol`)
@@ -592,6 +603,8 @@ medicare-hackaleague/
 ---
 
 > **Built for HackaLeague** — *Decentralized. Intelligent. Patient-first.*
-#   m e d i c  
- #   m e d i c  
+#   m e d i c 
+ 
+ #   m e d i c 
+ 
  
